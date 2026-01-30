@@ -94,6 +94,8 @@ CONFIG_FREERTOS_HZ=1000
 - **[components/TFT_eSPI](components/TFT_eSPI)** - TFT graphics library
 - **[main](main/)** - Application code
   - `main.c` - BACnet initialization and main loop
+  - `analog_value.c/h` - Analog Value object creation and NVS persistence
+  - `binary_value.c/h` - Binary Value object creation and NVS persistence
   - `display.cpp` - TFT display driver
   - `wifi_helper.c` - WiFi configuration helpers
 
