@@ -114,7 +114,7 @@ CONFIG_FREERTOS_HZ=1000
 
 ## BACnet Integration
 
-The device broadcasts its Device ID and manages BACnet objects that can be read/written by any BACnet/IP client (e.g., YABE, Tridium Niagara).
+The device broadcasts its Device ID and manages BACnet objects that can be read/written by any BACnet/IP client (e.g., YABE, Tridium Niagara, Metasys).
 
 ### BACnet Objects Exposed
 
