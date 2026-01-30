@@ -2,7 +2,7 @@
 
 ESP32-based BACnet/IP device with ST7789 TFT display for monitoring 4 Analog Values (AV1-AV4) and 4 Binary Values (BV1-BV4). 
 
-The user can easily add extra BACnet Objects and link them to the ESP32 GPIO, to integrate Analog and Digital inputs and outputs.
+You can easily add extra BACnet objects and map them to ESP32 GPIO for analog and digital inputs/outputs.
 
 ## Features
 
@@ -121,13 +121,6 @@ The device broadcasts its Device ID and manages BACnet objects that can be read/
 - **Device**: 130 (configurable in main.c)
 - **Analog Values**: Instance 1, 2, 3, 4
 - **Binary Values**: Instance 1, 2, 3, 4
-
-### Using with YABE
-
-1. Start YABE (BACnet client)
-2. Scan for devices
-3. Locate "BACnet-ESP32-Display" device
-4. Read/write Analog_Value or Binary_Value objects
 
 ## Modifications to bacnet-stack
 
