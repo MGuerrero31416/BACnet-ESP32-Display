@@ -2,7 +2,7 @@
 
 ESP32-based BACnet/IP device with ST7789 TFT display for monitoring 4 Analog Values (AV1-AV4) and 4 Binary Values (BV1-BV4). 
 
-The user can easily add extra BACnet Objects and link them to the GPIO to get Analog and Digital inputs and outputs.
+The user can easily add extra BACnet Objects and link them to the ESP32 GPIO, to integrate Analog and Digital inputs and outputs.
 
 ## Features
 
@@ -79,6 +79,12 @@ Arduino framework requires FreeRTOS tick rate of 1000Hz. This is set in [sdkconf
 ```
 CONFIG_FREERTOS_HZ=1000
 ```
+
+### BACnet Object Configuration
+
+- **Analog Values**: Configure names, descriptions, units, and initial values in [main/analog_value.c](main/analog_value.c) - **ANALOG VALUE CONFIGURATION** section
+
+- **Binary Values**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_value.c](main/binary_value.c) - **BINARY VALUE CONFIGURATION** section
 
 ## Architecture
 

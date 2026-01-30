@@ -11,6 +11,8 @@
 #include "esp_netif.h"
 #include "wifi_helper.h"
 #include "display.h"
+#include "analog_value.h"
+#include "binary_value.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/device.h"
@@ -32,18 +34,6 @@
 #include "bacnet/npdu.h"
 #include "bacnet/basic/npdu/h_npdu.h"
 
-/* NVS helpers for persisting object properties */
-#define NVS_NAMESPACE "bacnet"
-void bacnet_nvs_save_av_name(uint32_t instance, const char *name, uint16_t length);
-void bacnet_nvs_save_av_desc(uint32_t instance, const char *desc, uint16_t length);
-void bacnet_nvs_save_av_units(uint32_t instance, uint16_t units);
-void bacnet_nvs_save_av_pv(uint32_t instance, float value);
-void bacnet_nvs_save_bv_name(uint32_t instance, const char *name, uint16_t length);
-void bacnet_nvs_save_bv_desc(uint32_t instance, const char *desc, uint16_t length);
-void bacnet_nvs_save_bv_pv(uint32_t instance, uint8_t value);
-void bacnet_nvs_load_av(uint32_t instance);
-void bacnet_nvs_load_bv(uint32_t instance);
-
 static const char *TAG = "bacnet";
 
 /* BACnet device settings */
@@ -52,6 +42,7 @@ static const char *TAG = "bacnet";
 // ========================================================================================
 /* Set to 1 to override NVS values with code defaults on flash, 0 to use persisted values */
 #define OVERRIDE_NVS_ON_FLASH 0
+int override_nvs_on_flash = OVERRIDE_NVS_ON_FLASH;  /* Exported for AV/BV modules */
 // =========================================================================================
 
 /* BBMD foreign device registration */
@@ -66,296 +57,6 @@ static void bacnet_register_with_bbmd(void);
 static void bacnet_receive_task(void *pvParameters);
 static void bacnet_cov_task(void *pvParameters);
 static TaskHandle_t bacnet_cov_task_handle = NULL;
-
-static void bacnet_create_objects(void)
-{
-    uint32_t av_instances[] = { 1, 2, 3, 4 };
-    uint32_t bv_instances[] = { 1, 2, 3, 4 };
-    float av_values[] = { 10.0f, 20.0f, 30.0f, 40.0f };
-    BACNET_BINARY_PV bv_values[] = {
-        BINARY_ACTIVE, BINARY_INACTIVE, BINARY_ACTIVE, BINARY_INACTIVE
-    };
-    size_t i = 0;
-
-    for (i = 0; i < 4; i++) {
-        uint32_t instance = av_instances[i];
-        Analog_Value_Create(instance);
-        Analog_Value_Name_Set(instance, (i == 0) ? "AV1" :
-                           (i == 1) ? "AV2" :
-                           (i == 2) ? "AV3" : "AV4");
-                                       
-        Analog_Value_Description_Set(instance, "Analog Value");
-        Analog_Value_Units_Set(instance, UNITS_PERCENT);
-        Analog_Value_Present_Value_Set(instance, av_values[i], 16);
-        Analog_Value_COV_Increment_Set(instance, 1.0f);
-        Analog_Value_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
-        Analog_Value_Out_Of_Service_Set(instance, false);
-        /* Load persisted values from NVS (if any) - unless override flag is set */
-        if (!OVERRIDE_NVS_ON_FLASH) {
-            bacnet_nvs_load_av(instance);
-        }
-    }
-
-    for (i = 0; i < 4; i++) {
-        uint32_t instance = bv_instances[i];
-        Binary_Value_Create(instance);
-        Binary_Value_Name_Set(instance, (i == 0) ? "BV1" :
-                           (i == 1) ? "BV2" :
-                           (i == 2) ? "BV3" : "BV4");
-        Binary_Value_Description_Set(instance, "Binary Value");
-        Binary_Value_Active_Text_Set(instance, "ACTIVE");
-        Binary_Value_Inactive_Text_Set(instance, "INACTIVE");
-        Binary_Value_Present_Value_Set(instance, bv_values[i]);
-        Binary_Value_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
-        Binary_Value_Out_Of_Service_Set(instance, false);
-        Binary_Value_Write_Enable(instance);
-        /* Load persisted values from NVS (if any) - unless override flag is set */
-        if (!OVERRIDE_NVS_ON_FLASH) {
-            bacnet_nvs_load_bv(instance);
-        }
-    }
-}
-
-/* NVS helper functions to persist object properties */
-void bacnet_nvs_save_av_name(uint32_t instance, const char *name, uint16_t length) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    char buf[65] = {0};
-    esp_err_t err;
-    snprintf(key, sizeof(key), "analog_%lu_name", (unsigned long)instance);
-    if (name && length > 0 && length < sizeof(buf)) {
-        memcpy(buf, name, length);
-        buf[length] = 0;
-    }
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_str(nvs_handle, key, buf)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved AV%lu name: %s", (unsigned long)instance, buf);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for AV%lu name: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_str failed for AV%lu name: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for AV%lu name: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_av_desc(uint32_t instance, const char *desc, uint16_t length) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    char buf[129] = {0};
-    esp_err_t err;
-    snprintf(key, sizeof(key), "analog_%lu_desc", (unsigned long)instance);
-    if (desc && length > 0 && length < sizeof(buf)) {
-        memcpy(buf, desc, length);
-        buf[length] = 0;
-    }
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_str(nvs_handle, key, buf)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved AV%lu desc: %s", (unsigned long)instance, buf);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for AV%lu desc: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_str failed for AV%lu desc: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for AV%lu desc: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_av_units(uint32_t instance, uint16_t units) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    esp_err_t err;
-    snprintf(key, sizeof(key), "analog_%lu_unit", (unsigned long)instance);
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_u16(nvs_handle, key, units)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved AV%lu units: %u", (unsigned long)instance, units);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for AV%lu units: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_u16 failed for AV%lu units: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for AV%lu units: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_av_pv(uint32_t instance, float value) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    esp_err_t err;
-    snprintf(key, sizeof(key), "analog_%lu_val", (unsigned long)instance);
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_blob(nvs_handle, key, &value, sizeof(value))) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved AV%lu value: %.2f", (unsigned long)instance, value);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for AV%lu: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_blob failed for AV%lu: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for AV%lu: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_bv_name(uint32_t instance, const char *name, uint16_t length) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    char buf[65] = {0};
-    esp_err_t err;
-    snprintf(key, sizeof(key), "binary_%lu_name", (unsigned long)instance);
-    if (name && length > 0 && length < sizeof(buf)) {
-        memcpy(buf, name, length);
-        buf[length] = 0;
-    }
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_str(nvs_handle, key, buf)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved BV%lu name: %s", (unsigned long)instance, buf);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for BV%lu name: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_str failed for BV%lu name: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for BV%lu name: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_bv_desc(uint32_t instance, const char *desc, uint16_t length) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    char buf[129] = {0};
-    esp_err_t err;
-    snprintf(key, sizeof(key), "binary_%lu_desc", (unsigned long)instance);
-    if (desc && length > 0 && length < sizeof(buf)) {
-        memcpy(buf, desc, length);
-        buf[length] = 0;
-    }
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_str(nvs_handle, key, buf)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved BV%lu desc: %s", (unsigned long)instance, buf);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for BV%lu desc: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_str failed for BV%lu desc: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for BV%lu desc: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_save_bv_pv(uint32_t instance, uint8_t value) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    esp_err_t err;
-    snprintf(key, sizeof(key), "binary_%lu_val", (unsigned long)instance);
-    if ((err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle)) == ESP_OK) {
-        if ((err = nvs_set_u8(nvs_handle, key, value)) == ESP_OK) {
-            if ((err = nvs_commit(nvs_handle)) == ESP_OK) {
-                ESP_LOGI(TAG, "Saved BV%lu value: %u", (unsigned long)instance, value);
-            } else {
-                ESP_LOGE(TAG, "NVS commit failed for BV%lu value: %d", (unsigned long)instance, err);
-            }
-        } else {
-            ESP_LOGE(TAG, "NVS set_u8 failed for BV%lu value: %d", (unsigned long)instance, err);
-        }
-        nvs_close(nvs_handle);
-    } else {
-        ESP_LOGE(TAG, "NVS open failed for BV%lu value: %d", (unsigned long)instance, err);
-    }
-}
-
-void bacnet_nvs_load_av(uint32_t instance) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    static char av_names[4][65];  /* Persistent storage for loaded names */
-    static char av_descs[4][129];  /* Persistent storage for loaded descriptions */
-    uint8_t idx = (instance > 0 && instance <= 4) ? (instance - 1) : 0;
-    uint16_t units = UNITS_PERCENT;
-    float pv = 0.0f;
-    size_t len;
-
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle) != ESP_OK) {
-        return;  /* NVS not initialized yet */
-    }
-
-    snprintf(key, sizeof(key), "analog_%lu_name", (unsigned long)instance);
-    len = sizeof(av_names[idx]);
-    if (nvs_get_str(nvs_handle, key, av_names[idx], &len) == ESP_OK) {
-        Analog_Value_Name_Set(instance, av_names[idx]);
-    }
-
-    snprintf(key, sizeof(key), "analog_%lu_desc", (unsigned long)instance);
-    len = sizeof(av_descs[idx]);
-    if (nvs_get_str(nvs_handle, key, av_descs[idx], &len) == ESP_OK) {
-        Analog_Value_Description_Set(instance, av_descs[idx]);
-    }
-
-    snprintf(key, sizeof(key), "analog_%lu_unit", (unsigned long)instance);
-    if (nvs_get_u16(nvs_handle, key, &units) == ESP_OK) {
-        Analog_Value_Units_Set(instance, units);
-    }
-
-    snprintf(key, sizeof(key), "analog_%lu_val", (unsigned long)instance);
-    len = sizeof(pv);
-    if (nvs_get_blob(nvs_handle, key, &pv, &len) == ESP_OK) {
-        Analog_Value_Present_Value_Set(instance, pv, 16);
-    }
-
-    nvs_close(nvs_handle);
-}
-
-void bacnet_nvs_load_bv(uint32_t instance) {
-    nvs_handle_t nvs_handle;
-    char key[32];
-    static char bv_names[4][65];  /* Persistent storage for loaded names */
-    static char bv_descs[4][129];  /* Persistent storage for loaded descriptions */
-    uint8_t idx = (instance > 0 && instance <= 4) ? (instance - 1) : 0;
-    uint8_t pv = BINARY_INACTIVE;
-    size_t len;
-
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle) != ESP_OK) {
-        return;  /* NVS not initialized yet */
-    }
-
-    snprintf(key, sizeof(key), "binary_%lu_name", (unsigned long)instance);
-    len = sizeof(bv_names[idx]);
-    if (nvs_get_str(nvs_handle, key, bv_names[idx], &len) == ESP_OK) {
-        Binary_Value_Name_Set(instance, bv_names[idx]);
-    }
-
-    snprintf(key, sizeof(key), "binary_%lu_desc", (unsigned long)instance);
-    len = sizeof(bv_descs[idx]);
-    if (nvs_get_str(nvs_handle, key, bv_descs[idx], &len) == ESP_OK) {
-        Binary_Value_Description_Set(instance, bv_descs[idx]);
-    }
-
-    snprintf(key, sizeof(key), "binary_%lu_val", (unsigned long)instance);
-    if (nvs_get_u8(nvs_handle, key, &pv) == ESP_OK) {
-        Binary_Value_Present_Value_Set(instance, (BACNET_BINARY_PV)pv);
-    }
-
-    nvs_close(nvs_handle);
-}
 
 /* BACnet receive task - processes incoming BACnet messages */
 static void bacnet_receive_task(void *pvParameters)
@@ -447,7 +148,9 @@ void app_main(void)
     /* Initialize COV subscription list */
     handler_cov_init();
 
-    bacnet_create_objects();
+    /* Create BACnet objects (AV and BV) */
+    bacnet_create_analog_values();
+    bacnet_create_binary_values();
 
     ESP_LOGI(TAG, "Broadcasting I-Am");
     Send_I_Am(Handler_Transmit_Buffer);
