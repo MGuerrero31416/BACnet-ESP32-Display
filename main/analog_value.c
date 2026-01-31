@@ -30,7 +30,7 @@ static const char *AV_NAMES[] = {
 
 /* Analog Value descriptions (per instance) */
 static const char *AV_DESCRIPTIONS[] = {
-    "Analog Value 1",
+    "PM2.5 from PMS5003",
     "Analog Value 2",
     "Analog Value 3",
     "Analog Value 4"
@@ -38,18 +38,18 @@ static const char *AV_DESCRIPTIONS[] = {
 
 /* Analog Value units (per instance) */
 static const uint16_t AV_UNITS[] = {
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS
+    UNITS_MICROGRAMS_PER_CUBIC_METER,  /* PM2.5 */
+    UNITS_DEGREES_CELSIUS,             /* AV2 - reserved */
+    UNITS_DEGREES_CELSIUS,             /* AV3 - reserved */
+    UNITS_DEGREES_CELSIUS              /* AV4 - reserved */
 };
 
 /* Analog Value initial values (per instance) */
 static const float AV_INITIAL_VALUES[] = {
-    10.0f,
-    20.0f,
-    30.0f,
-    40.0f
+    0.0f,
+    0.0f,
+    0.0f,
+    0.0f
 };
 
 /* Analog Value COV increment (per instance) */

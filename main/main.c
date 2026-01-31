@@ -13,6 +13,7 @@
 #include "display.h"
 #include "analog_value.h"
 #include "binary_value.h"
+#include "pms5003.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/device.h"
@@ -56,6 +57,7 @@ int override_nvs_on_flash = OVERRIDE_NVS_ON_FLASH;  /* Exported for AV/BV module
 static void bacnet_register_with_bbmd(void);
 static void bacnet_receive_task(void *pvParameters);
 static void bacnet_cov_task(void *pvParameters);
+static void pms5003_task(void *pvParameters);
 static TaskHandle_t bacnet_cov_task_handle = NULL;
 
 /* BACnet receive task - processes incoming BACnet messages */
@@ -166,6 +168,9 @@ void app_main(void)
     if (xTaskCreate(bacnet_cov_task, "bacnet_cov", 24576, NULL, 4, &bacnet_cov_task_handle) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create bacnet_cov task");
     }
+    if (xTaskCreate(pms5003_task, "pms5003", 8192, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create pms5003 task");
+    }
 
     ESP_LOGI(TAG, "BACnet stack initialized - idle");
 
@@ -204,6 +209,55 @@ static void bacnet_cov_task(void *pvParameters)
             ESP_LOGI(TAG, "bacnet_cov stack watermark: %u", (unsigned)watermark);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/* PMS5003 task - reads sensor data and writes to BACnet objects
+ * 
+ * PERIPHERAL-TO-BACNET MAPPING:
+ * - AV1 (instance 1): PM1.0 concentration
+ * - AV2 (instance 2): PM2.5 concentration  
+ * - AV3 (instance 3): PM10 concentration
+ * 
+ * To add more mappings:
+ * 1. Add Analog Value instances in analog_value.c
+ * 2. Add av_Set_Present_Value() calls below
+ * 3. Update labels/units in analog_value.c configuration
+ */
+static void pms5003_task(void *pvParameters)
+{
+    (void)pvParameters;
+    pms5003_data_t sensor_data;
+    uint32_t read_count = 0;
+
+    ESP_LOGI(TAG, "PMS5003 task started");
+    pms5003_init();
+
+    while (1) {
+        if (pms5003_read(&sensor_data)) {
+            read_count++;
+            ESP_LOGI(TAG, "PMS5003 read success (count: %lu)", read_count);
+            pms5003_print_data(&sensor_data);
+            
+            /* Write only PM2.5 atmospheric value to BACnet AV1 */
+            Analog_Value_Present_Value_Set(1, (float)sensor_data.pm2_5_atm, 16);
+            // AV2 and AV3 are not used
+            // Analog_Value_Present_Value_Set(2, (float)sensor_data.pm1_0_atm, 16);
+            // Analog_Value_Present_Value_Set(3, (float)sensor_data.pm10_atm, 16);
+            
+            /* Optional: Write additional data to other AVs if needed
+             * Analog_Value_Present_Value_Set(5, (float)sensor_data.particles_2_5, 16);
+             */
+        } else {
+            ESP_LOGW(TAG, "PMS5003 read failed - sensor disconnected or no data");
+            /* Clear BACnet values to indicate no valid data */
+            Analog_Value_Present_Value_Set(1, -1.0f, 16);  // -1 indicates error/no sensor
+            // Analog_Value_Present_Value_Set(2, -1.0f, 16);
+            // Analog_Value_Present_Value_Set(3, -1.0f, 16);
+        }
+
+        /* Read sensor every 2 seconds for faster response */
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
 

@@ -1,6 +1,6 @@
 # BACnet-ESP32-Display
 
-ESP32-based BACnet/IP device with ST7789 TFT display for monitoring 4 Analog Values (AV1-AV4) and 4 Binary Values (BV1-BV4). 
+ESP32-based BACnet/IP device with ST7789 TFT display for monitoring 4 Analog Values (AV1-AV4) and 4 Binary Values (BV1-BV4). Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring. 
 
 You can easily add extra BACnet objects and map them to ESP32 GPIO for analog and digital inputs/outputs.
 
@@ -14,6 +14,7 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 - **Arduino Framework**: Leverages Arduino ecosystem for easy hardware control
 - **Change of Value (COV)**: Implements BACnet COV notifications for efficient real-time updates
 - **Persistent Storage**: Attribute values modifiable from BACnet supervisor are automatically saved to ESP32 non-volatile memory (NVS) for retention across power cycles
+- **Air Quality Monitoring**: PMS5003 PM2.5/PM1.0/PM10 sensor with automatic BACnet integration
 
 ## Photos
 ![ESP32 BACnet](docs/images/ESP32_BACnet.jpg)
@@ -31,6 +32,52 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
   - DC: GPIO 2
   - RST: GPIO 4
   - BL (Backlight): GPIO 32
+
+## Hardware Components
+
+### ST7789 TFT Display
+- **Resolution**: 170x320 pixels
+- **Interface**: SPI (4-wire)
+- **Driver**: Custom TFT_eSPI component with offset calibration for clone displays
+
+### PMS5003 Air Quality Sensor
+- **Model**: Plantower PMS5003
+- **Communication**: UART (9600 baud, 8N1)
+- **Connections**:
+  - RX: GPIO 16 (ESP32 RX from sensor TX)
+  - TX: GPIO 17 (ESP32 TX to sensor RX)
+  - Power: 5V (requires 5V supply, not 3.3V)
+  - GND: ESP32 GND
+- **Measurements**:
+  - PM1.0 (atmospheric)
+  - PM2.5 (atmospheric) → mapped to **Analog Value 1** in BACnet (configurable)
+  - PM10 (atmospheric)
+  - Particle counts (0.3µm - 10µm ranges)
+- **BACnet Mapping**: By default, PM2.5 is written to AV1. You can select any sensor parameter (PM1.0, PM2.5, PM10, or particle counts) and map it to any Analog Value object (AV1-AV4) by modifying the pms5003_task in [main/main.c](main/main.c).
+- **Update Frequency**: 2-second intervals
+- **Response**: ~2 seconds to environmental changes
+- **Features**:
+  - Fast and responsive sensor readings
+  - Automatic byte-swapping for big-endian protocol
+  - Checksum validation on all frames
+  - Sensor disconnect detection with BACnet error indication (-1 value)
+
+### WiFi Connectivity
+- Built-in ESP32 WiFi for BACnet/IP communication
+- Configured via SSID/password in wifi_helper.c
+
+## GPIO Summary
+
+| Pin | Component | Signal |
+|-----|-----------|--------|
+| GPIO 2 | TFT Display | DC (Data/Command) |
+| GPIO 4 | TFT Display | RST (Reset) |
+| GPIO 15 | TFT Display | CS (Chip Select) |
+| GPIO 16 | PMS5003 | RX (sensor TX) |
+| GPIO 17 | PMS5003 | TX (sensor RX) |
+| GPIO 18 | TFT Display | SCLK (SPI Clock) |
+| GPIO 23 | TFT Display | MOSI (SPI Data) |
+| GPIO 32 | TFT Display | BACKLIGHT |
 
 ## Build Requirements
 
@@ -85,6 +132,10 @@ CONFIG_FREERTOS_HZ=1000
 - **Analog Values**: Configure names, descriptions, units, and initial values in [main/analog_value.c](main/analog_value.c) - **ANALOG VALUE CONFIGURATION** section
 
 - **Binary Values**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_value.c](main/binary_value.c) - **BINARY VALUE CONFIGURATION** section
+
+### Sensor Data Mapping
+
+- **PMS5003 Parameters**: Select which sensor parameter (PM1.0, PM2.5, PM10, or particle counts) to map to each Analog Value object in [main/main.c](main/main.c) - look for `pms5003_task()` function where sensor data is written to BACnet objects. Currently, PM2.5 atmospheric is written to AV1.
 
 ## Architecture
 
