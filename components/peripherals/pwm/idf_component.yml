@@ -1,3 +1,0 @@
-version: "1.0.0"
-description: "PWM outputs for 0-10V control on GPIO12/GPIO13"
-license: "MIT"
