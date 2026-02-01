@@ -12,6 +12,7 @@
 #include "wifi_helper.h"
 #include "display.h"
 #include "analog_value.h"
+#include "analog_output.h"
 #include "binary_value.h"
 #include "analog_input.h"
 #include "binary_input.h"
@@ -156,8 +157,9 @@ void app_main(void)
     /* Initialize COV subscription list */
     handler_cov_init();
 
-    /* Create BACnet objects (AV, BV, AI, BI, BO) */
+    /* Create BACnet objects (AV, AO, BV, AI, BI, BO) */
     bacnet_create_analog_values();
+    bacnet_create_analog_outputs();
     bacnet_create_binary_values();
     bacnet_create_analog_inputs();
     bacnet_create_binary_inputs();
