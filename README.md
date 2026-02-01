@@ -73,17 +73,17 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 
 ## GPIO Summary
 
-| Pin | Component | Signal |
-|-----|-----------|--------|
-| GPIO 2 | TFT Display | DC (Data/Command) |
-| GPIO 4 | TFT Display | RST (Reset) |
-| GPIO 15 | TFT Display | CS (Chip Select) |
-| GPIO 16 | PMS5003 | RX (sensor TX) |
-| GPIO 17 | PMS5003 | TX (sensor RX) |
-| GPIO 5 | PMS5003 | SET (Sleep Control) |
-| GPIO 18 | TFT Display | SCLK (SPI Clock) |
-| GPIO 23 | TFT Display | MOSI (SPI Data) |
-| GPIO 32 | TFT Display | BACKLIGHT |
+| Pin     | Component   | Signal              |
+|---------|-------------|---------------------|
+| GPIO 2  | TFT Display | DC (Data/Command)   |
+| GPIO 4  | TFT Display | RST (Reset)         |
+| GPIO 15 | TFT Display | CS (Chip Select)    |
+| GPIO 16 | PMS5003     | RX (sensor TX)      |
+| GPIO 17 | PMS5003     | TX (sensor RX)      |
+| GPIO 5  | PMS5003     | SET (Sleep Control) |
+| GPIO 18 | TFT Display | SCLK (SPI Clock)    |
+| GPIO 23 | TFT Display | MOSI (SPI Data)     |
+| GPIO 32 | TFT Display | BACKLIGHT           |
 
 ## Build Requirements
 

@@ -48,7 +48,7 @@ static const char *TAG = "bacnet";
 
 // ========================================================================================
 /* Set to 1 to override NVS values with code defaults on flash, 0 to use persisted values */
-#define OVERRIDE_NVS_ON_FLASH 0
+#define OVERRIDE_NVS_ON_FLASH 1
 int override_nvs_on_flash = OVERRIDE_NVS_ON_FLASH;  /* Exported for AV/BV modules */
 // =========================================================================================
 
@@ -224,9 +224,8 @@ static void bacnet_cov_task(void *pvParameters)
 /* PMS5003 task - reads sensor data and writes to BACnet objects
  * 
  * PERIPHERAL-TO-BACNET MAPPING:
- * - AV1 (instance 1): PM1.0 concentration
- * - AV2 (instance 2): PM2.5 concentration  
- * - AV3 (instance 3): PM10 concentration
+ * - AV1 (instance 1): PM2.5 concentration (atmospheric)
+ * - AV2, AV3, AV4: Reserved for future use
  * 
  * To add more mappings:
  * 1. Add Analog Value instances in analog_value.c
@@ -248,8 +247,8 @@ static void pms5003_task(void *pvParameters)
      * - UART frame synchronization
      * This prevents read failures during early startup
      */
-    ESP_LOGI(TAG, "Waiting 30 seconds for PMS5003 sensor initialization...");
-    vTaskDelay(pdMS_TO_TICKS(30000));
+    ESP_LOGI(TAG, "Waiting 15 seconds for PMS5003 sensor initialization...");
+    vTaskDelay(pdMS_TO_TICKS(15000));
     ESP_LOGI(TAG, "PMS5003 sensor initialization complete, starting reads");
 
     while (1) {
