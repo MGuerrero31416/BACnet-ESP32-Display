@@ -93,6 +93,12 @@ uint16_t pms5003_get_pm10(void);
  */
 void pms5003_get_data(pms5003_data_t *data);
 
+/**
+ * @brief Control PMS5003 SET pin (GPIO5) from BACnet Binary Output
+ * @param state 0 (BINARY_INACTIVE/OFF) = AWAKE (GPIO5 LOW), 1 (BINARY_ACTIVE/ON) = SLEEP (GPIO5 HIGH)
+ */
+void pms5003_set_gpio_from_bo(uint32_t state);
+
 #ifdef __cplusplus
 }
 #endif

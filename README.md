@@ -1,6 +1,6 @@
 # BACnet-ESP32-Display
 
-ESP32-based BACnet/IP device with ST7789 TFT display for monitoring 4 Analog Values (AV1-AV4) and 4 Binary Values (BV1-BV4). Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring. 
+ESP32-based BACnet/IP device with ST7789 TFT display featuring 20 BACnet objects: 4 Analog Values, 4 Binary Values, 4 Analog Inputs, 4 Binary Inputs, and 4 Binary Outputs. Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring.
 
 You can easily add extra BACnet objects and map them to ESP32 GPIO for analog and digital inputs/outputs.
 
@@ -8,8 +8,12 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 
 - **BACnet/IP Protocol**: Full BACnet/IP stack implementation
 - **Live Display**: Real-time monitoring of BACnet objects on 170x320 TFT display
-- **Analog Values**: 4 configurable analog values with present value tracking
-- **Binary Values**: 4 configurable binary values with ON/OFF status indicators
+- **20 BACnet Objects**:
+  - 4 Analog Values (AV1-4) - read/write with COV and NVS persistence
+  - 4 Binary Values (BV1-4) - read/write with COV and NVS persistence
+  - 4 Analog Inputs (AI1-4) - read-only sensor inputs with COV and NVS persistence
+  - 4 Binary Inputs (BI1-4) - read-only binary states with COV and NVS persistence
+  - 4 Binary Outputs (BO1-4) - writable control outputs with COV and NVS persistence
 - **WiFi Connectivity**: ESP32 with built-in WiFi for BACnet/IP communication
 - **Arduino Framework**: Leverages Arduino ecosystem for easy hardware control
 - **Change of Value (COV)**: Implements BACnet COV notifications for efficient real-time updates
@@ -46,6 +50,7 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 - **Connections**:
   - RX: GPIO 16 (ESP32 RX from sensor TX)
   - TX: GPIO 17 (ESP32 TX to sensor RX)
+  - SET (Sleep Control): GPIO 5 (LOW = AWAKE, HIGH = SLEEP) — controlled by BO1 (PMS5003_SET)
   - Power: 5V (requires 5V supply, not 3.3V)
   - GND: ESP32 GND
 - **Measurements**:
@@ -75,6 +80,7 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 | GPIO 15 | TFT Display | CS (Chip Select) |
 | GPIO 16 | PMS5003 | RX (sensor TX) |
 | GPIO 17 | PMS5003 | TX (sensor RX) |
+| GPIO 5 | PMS5003 | SET (Sleep Control) |
 | GPIO 18 | TFT Display | SCLK (SPI Clock) |
 | GPIO 23 | TFT Display | MOSI (SPI Data) |
 | GPIO 32 | TFT Display | BACKLIGHT |
@@ -129,9 +135,15 @@ CONFIG_FREERTOS_HZ=1000
 
 ### BACnet Object Configuration
 
-- **Analog Values**: Configure names, descriptions, units, and initial values in [main/analog_value.c](main/analog_value.c) - **ANALOG VALUE CONFIGURATION** section
+- **Analog Values (AV1-4)**: Configure names, descriptions, units, and initial values in [main/analog_value.c](main/analog_value.c) - **ANALOG VALUE CONFIGURATION** section
 
-- **Binary Values**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_value.c](main/binary_value.c) - **BINARY VALUE CONFIGURATION** section
+- **Binary Values (BV1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_value.c](main/binary_value.c) - **BINARY VALUE CONFIGURATION** section
+
+- **Analog Inputs (AI1-4)**: Configure names, descriptions, units, and COV increments in [main/analog_input.c](main/analog_input.c) - **ANALOG INPUT CONFIGURATION** section. Read-only inputs suitable for sensor integration.
+
+- **Binary Inputs (BI1-4)**: Configure names, descriptions, active/inactive text in [main/binary_input.c](main/binary_input.c) - **BINARY INPUT CONFIGURATION** section. Read-only binary states.
+
+- **Binary Outputs (BO1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_output.c](main/binary_output.c) - **BINARY OUTPUT CONFIGURATION** section. Writable control outputs with priority support.
 
 ### Sensor Data Mapping
 
@@ -147,6 +159,9 @@ CONFIG_FREERTOS_HZ=1000
   - `main.c` - BACnet initialization and main loop
   - `analog_value.c/h` - Analog Value object creation and NVS persistence
   - `binary_value.c/h` - Binary Value object creation and NVS persistence
+  - `analog_input.c/h` - Analog Input object creation and NVS persistence
+  - `binary_input.c/h` - Binary Input object creation and NVS persistence
+  - `binary_output.c/h` - Binary Output object creation and NVS persistence
   - `display.cpp` - TFT display driver
   - `wifi_helper.c` - WiFi configuration helpers
 

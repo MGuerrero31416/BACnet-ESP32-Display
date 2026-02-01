@@ -1,5 +1,6 @@
 #include "pms5003.h"
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -11,6 +12,7 @@ static const char *TAG = "PMS5003";
 // GPIO pins for PMS5003
 #define PMS5003_RX_PIN 16      // RX on GPIO 16
 #define PMS5003_TX_PIN 17      // TX on GPIO 17
+#define PMS5003_SET_PIN 5      // SET pin on GPIO 5 (LOW = awake, HIGH = sleep)
 #define PMS5003_UART_NUM UART_NUM_1
 #define PMS5003_UART_BAUD 9600
 #define PMS5003_BUF_SIZE 1024
@@ -25,6 +27,18 @@ static SemaphoreHandle_t pm_mutex = NULL;
 void pms5003_init(void)
 {
     ESP_LOGI(TAG, "Initializing PMS5003 sensor...");
+    
+    // Configure GPIO5 as PMS5003_SET pin (LOW = awake, HIGH = sleep)
+    gpio_config_t gpio_cfg = {
+        .pin_bit_mask = (1ULL << PMS5003_SET_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&gpio_cfg);
+    gpio_set_level(PMS5003_SET_PIN, 0);  // Start with sensor AWAKE (LOW)
+    ESP_LOGI(TAG, "GPIO5 configured as PMS5003_SET (set to AWAKE)");
     
     // Configure UART1 for PMS5003
     uart_config_t uart_config = {
@@ -281,4 +295,16 @@ void pms5003_get_data(pms5003_data_t *data)
     } else {
         memcpy(data, &current_data, sizeof(pms5003_data_t));
     }
+}
+/**
+ * @brief Control PMS5003 SET pin (GPIO5) from BACnet Binary Output
+ * OFF/INACTIVE (0) = AWAKE (GPIO5 LOW)
+ * ON/ACTIVE (1) = SLEEP (GPIO5 HIGH)
+ */
+void pms5003_set_gpio_from_bo(uint32_t state)
+{
+    uint32_t gpio_level = (state != 0) ? 1 : 0;  // 1 = sleep, 0 = awake
+    gpio_set_level(PMS5003_SET_PIN, gpio_level);
+    ESP_LOGI(TAG, "PMS5003_SET (GPIO5)=%lu (%s)",
+             gpio_level, gpio_level ? "SLEEP" : "AWAKE");
 }

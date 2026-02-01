@@ -1,4 +1,4 @@
-idf_component_register(SRCS "binary_value.c" "analog_value.c" "main.c" "wifi_helper.c" "display.cpp"
+idf_component_register(SRCS "binary_output.c" "binary_input.c" "analog_input.c" "binary_value.c" "analog_value.c" "main.c" "wifi_helper.c" "display.cpp"
                        REQUIRES bacnet-stack TFT_eSPI espressif__arduino-esp32 pms5003
                        PRIV_REQUIRES spi_flash nvs_flash esp_event esp_wifi esp_netif
                        INCLUDE_DIRS "")

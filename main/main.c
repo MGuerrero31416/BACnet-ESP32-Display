@@ -13,12 +13,18 @@
 #include "display.h"
 #include "analog_value.h"
 #include "binary_value.h"
+#include "analog_input.h"
+#include "binary_input.h"
+#include "binary_output.h"
 #include "pms5003.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/device.h"
 #include "bacnet/basic/object/av.h"
 #include "bacnet/basic/object/bv.h"
+#include "bacnet/basic/object/ai.h"
+#include "bacnet/basic/object/bi.h"
+#include "bacnet/basic/object/bo.h"
 #include "bacnet/basic/service/s_iam.h"
 #include "bacnet/basic/tsm/tsm.h"
 #include "bacnet/bacaddr.h"
@@ -150,9 +156,12 @@ void app_main(void)
     /* Initialize COV subscription list */
     handler_cov_init();
 
-    /* Create BACnet objects (AV and BV) */
+    /* Create BACnet objects (AV, BV, AI, BI, BO) */
     bacnet_create_analog_values();
     bacnet_create_binary_values();
+    bacnet_create_analog_inputs();
+    bacnet_create_binary_inputs();
+    bacnet_create_binary_outputs_with_gpio_sync();  /* Create BO with GPIO sync task */
 
     ESP_LOGI(TAG, "Broadcasting I-Am");
     Send_I_Am(Handler_Transmit_Buffer);
@@ -232,6 +241,16 @@ static void pms5003_task(void *pvParameters)
 
     ESP_LOGI(TAG, "PMS5003 task started");
     pms5003_init();
+
+    /* PMS5003 requires ~30 seconds for full initialization:
+     * - Fan motor startup and stabilization
+     * - Particle sensor settling
+     * - UART frame synchronization
+     * This prevents read failures during early startup
+     */
+    ESP_LOGI(TAG, "Waiting 30 seconds for PMS5003 sensor initialization...");
+    vTaskDelay(pdMS_TO_TICKS(30000));
+    ESP_LOGI(TAG, "PMS5003 sensor initialization complete, starting reads");
 
     while (1) {
         if (pms5003_read(&sensor_data)) {
