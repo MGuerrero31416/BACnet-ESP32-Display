@@ -1,4 +1,4 @@
-# BACnet-ESP32-Display
+# BACnet ESP32 Display MS/TP WiFi
 
 ESP32-based BACnet/IP device with ST7789 TFT display featuring 20 BACnet objects: 4 Analog Values, 4 Binary Values, 4 Analog Inputs, 4 Binary Inputs, and 4 Binary Outputs. Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring.
 
