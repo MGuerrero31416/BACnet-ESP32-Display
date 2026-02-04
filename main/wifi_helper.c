@@ -9,8 +9,8 @@
 static const char *TAG = "wifi";
 
 /* Replace with your SSID / PASS or read from menuconfig */
-#define WIFI_SSID "Your_SSID"
-#define WIFI_PASS "Your_PASSWORD"
+#define WIFI_SSID "UN-Guest"
+#define WIFI_PASS ""
 
 /* Simple Wi-Fi setup (blocking until connected) */
 void wifi_init_sta(void)
