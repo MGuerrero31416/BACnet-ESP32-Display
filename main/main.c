@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -17,6 +18,7 @@
 #include "binary_input.h"
 #include "binary_output.h"
 #include "pms5003.h"
+#include "mstp_rs485.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/device.h"
@@ -31,6 +33,8 @@
 #include "bacnet/basic/bbmd/h_bbmd.h"
 #include "bacnet/datalink/datalink.h"
 #include "bacnet/datalink/bip.h"
+#include "bacnet/datalink/dlmstp.h"
+#include "bacnet/datalink/mstp.h"
 /* service handlers from bacnet-stack library */
 #include "bacnet/basic/services.h"
 #include "bacnet/basic/service/h_rp.h"
@@ -60,11 +64,77 @@ int override_nvs_on_flash = OVERRIDE_NVS_ON_FLASH;  /* Exported for AV/BV module
 #define BBMD_PORT 0xBAC0
 #define BBMD_TTL_SECONDS 600
 
+/* BACnet MS/TP settings */
+#define MSTP_MAC_ADDRESS 1
+#define MSTP_MAX_INFO_FRAMES 1
+#define MSTP_MAX_MASTER 127
+#define MSTP_BAUD_RATE 38400U
+
 static void bacnet_register_with_bbmd(void);
 static void bacnet_receive_task(void *pvParameters);
+static void bacnet_mstp_receive_task(void *pvParameters);
 static void bacnet_cov_task(void *pvParameters);
 static void pms5003_task(void *pvParameters);
 static TaskHandle_t bacnet_cov_task_handle = NULL;
+static SemaphoreHandle_t bacnet_datalink_mutex = NULL;
+
+static char datalink_bip[] = "bip";
+static char datalink_mstp[] = "mstp";
+
+static uint8_t mstp_rx_buffer[512];
+static uint8_t mstp_tx_buffer[512];
+static struct mstp_port_struct_t mstp_port;
+static struct dlmstp_user_data_t mstp_user;
+static struct dlmstp_rs485_driver mstp_rs485_driver = {
+    .init = MSTP_RS485_Init,
+    .send = MSTP_RS485_Send,
+    .read = MSTP_RS485_Read,
+    .transmitting = MSTP_RS485_Transmitting,
+    .baud_rate = MSTP_RS485_Baud_Rate,
+    .baud_rate_set = MSTP_RS485_Baud_Rate_Set,
+    .silence_milliseconds = MSTP_RS485_Silence_Milliseconds,
+    .silence_reset = MSTP_RS485_Silence_Reset
+};
+
+static void bacnet_datalink_lock(char *name)
+{
+    if (bacnet_datalink_mutex) {
+        xSemaphoreTake(bacnet_datalink_mutex, portMAX_DELAY);
+    }
+    datalink_set(name);
+}
+
+static void bacnet_datalink_unlock(void)
+{
+    datalink_set(datalink_bip);
+    if (bacnet_datalink_mutex) {
+        xSemaphoreGive(bacnet_datalink_mutex);
+    }
+}
+
+static bool bacnet_mstp_init(void)
+{
+    MSTP_RS485_Init();
+
+    memset(&mstp_port, 0, sizeof(mstp_port));
+    memset(&mstp_user, 0, sizeof(mstp_user));
+
+    mstp_user.RS485_Driver = &mstp_rs485_driver;
+    mstp_port.UserData = &mstp_user;
+    mstp_port.InputBuffer = mstp_rx_buffer;
+    mstp_port.InputBufferSize = sizeof(mstp_rx_buffer);
+    mstp_port.OutputBuffer = mstp_tx_buffer;
+    mstp_port.OutputBufferSize = sizeof(mstp_tx_buffer);
+
+    dlmstp_set_interface((const char *)&mstp_port);
+    dlmstp_set_mac_address(MSTP_MAC_ADDRESS);
+    dlmstp_set_max_info_frames(MSTP_MAX_INFO_FRAMES);
+    dlmstp_set_max_master(MSTP_MAX_MASTER);
+    dlmstp_set_baud_rate(MSTP_BAUD_RATE);
+    dlmstp_slave_mode_enabled_set(false);
+
+    return dlmstp_init((char *)&mstp_port);
+}
 
 /* BACnet receive task - processes incoming BACnet messages */
 static void bacnet_receive_task(void *pvParameters)
@@ -92,10 +162,40 @@ static void bacnet_receive_task(void *pvParameters)
                 src = orig_src;
             }
             if (apdu_offset > 0 && apdu_offset < (int)pdu_len) {
+                bacnet_datalink_lock(datalink_bip);
                 apdu_handler(&src, &rx_buffer[apdu_offset], pdu_len - apdu_offset);
+                bacnet_datalink_unlock();
             }
         }
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+/* BACnet MS/TP receive task - processes incoming MS/TP frames */
+static void bacnet_mstp_receive_task(void *pvParameters)
+{
+    (void)pvParameters;
+    BACNET_ADDRESS src = {0};
+    static uint8_t rx_buffer[600];
+    uint16_t pdu_len = 0;
+
+    ESP_LOGI(TAG, "BACnet MS/TP receive task started");
+
+    while (1) {
+        memset(&src, 0, sizeof(src));
+        pdu_len = dlmstp_receive(&src, rx_buffer, sizeof(rx_buffer), 0);
+        if (pdu_len > 0) {
+            BACNET_ADDRESS dest = {0};
+            BACNET_NPDU_DATA npdu_data = {0};
+            int apdu_offset = bacnet_npdu_decode(
+                rx_buffer, pdu_len, &dest, &src, &npdu_data);
+            if (apdu_offset > 0 && apdu_offset < (int)pdu_len) {
+                bacnet_datalink_lock(datalink_mstp);
+                apdu_handler(&src, &rx_buffer[apdu_offset], pdu_len - apdu_offset);
+                bacnet_datalink_unlock();
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -103,6 +203,11 @@ static void bacnet_receive_task(void *pvParameters)
 void app_main(void)
 {
     esp_err_t ret = nvs_flash_init();
+
+    bacnet_datalink_mutex = xSemaphoreCreateMutex();
+    if (!bacnet_datalink_mutex) {
+        ESP_LOGE(TAG, "Failed to create BACnet datalink mutex");
+    }
     
     /* If OVERRIDE_NVS_ON_FLASH is set, always erase NVS to reset to code defaults */
     if (OVERRIDE_NVS_ON_FLASH) {
@@ -128,14 +233,25 @@ void app_main(void)
 
     wifi_init_sta();
 
-    ESP_LOGI(TAG, "Initializing BACnet stack");
-    datalink_set("bip");
+    ESP_LOGI(TAG, "Initializing BACnet stack (B/IP)");
+    datalink_set(datalink_bip);
     if (!datalink_init(NULL)) {
         ESP_LOGE(TAG, "Failed to initialize BACnet datalink");
         return;
     }
 
     bacnet_register_with_bbmd();
+
+    ESP_LOGI(TAG, "Initializing BACnet MS/TP");
+    if (!bacnet_mstp_init()) {
+        ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink");
+    } else {
+        datalink_set(datalink_mstp);
+        if (!datalink_init((char *)&mstp_port)) {
+            ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink interface");
+        }
+    }
+    datalink_set(datalink_bip);
 
     Device_Init(NULL);
     Device_Set_Object_Instance_Number(BACNET_DEVICE_INSTANCE);
@@ -164,7 +280,12 @@ void app_main(void)
     bacnet_create_binary_outputs_with_gpio_sync();  /* Create BO with GPIO sync task */
 
     ESP_LOGI(TAG, "Broadcasting I-Am");
+    bacnet_datalink_lock(datalink_bip);
     Send_I_Am(Handler_Transmit_Buffer);
+    bacnet_datalink_unlock();
+    bacnet_datalink_lock(datalink_mstp);
+    Send_I_Am(Handler_Transmit_Buffer);
+    bacnet_datalink_unlock();
 
     /* Initialize display */
     ESP_LOGI(TAG, "Initializing display");
@@ -173,6 +294,9 @@ void app_main(void)
     /* Start BACnet receive task to handle incoming messages */
     if (xTaskCreate(bacnet_receive_task, "bacnet_rx", 16384, NULL, 5, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create bacnet_rx task");
+    }
+    if (xTaskCreate(bacnet_mstp_receive_task, "bacnet_mstp_rx", 8192, NULL, 5, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create bacnet_mstp_rx task");
     }
     if (xTaskCreate(bacnet_cov_task, "bacnet_cov", 24576, NULL, 4, &bacnet_cov_task_handle) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create bacnet_cov task");
@@ -186,7 +310,9 @@ void app_main(void)
     /* Keep the task alive - maintenance + display updates */
     uint32_t display_tick = 0;
     while (1) {
+        bacnet_datalink_lock(datalink_bip);
         datalink_maintenance_timer(1);
+        bacnet_datalink_unlock();
         
         /* Update display every 2 seconds */
         if (++display_tick % 2 == 0) {
@@ -211,8 +337,10 @@ static void bacnet_cov_task(void *pvParameters)
     (void)pvParameters;
     uint32_t tick = 0;
     while (1) {
+        bacnet_datalink_lock(datalink_bip);
         handler_cov_timer_seconds(1);
         handler_cov_task();
+        bacnet_datalink_unlock();
         if (++tick % 60 == 0) {
             UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
             ESP_LOGI(TAG, "bacnet_cov stack watermark: %u", (unsigned)watermark);
@@ -232,7 +360,7 @@ static void bacnet_cov_task(void *pvParameters)
  * 2. Add av_Set_Present_Value() calls below
  * 3. Update labels/units in analog_value.c configuration
  */
-static void pms5003_task(void *pvParameters)
+static void __attribute__((unused)) pms5003_task(void *pvParameters)
 {
     (void)pvParameters;
     pms5003_data_t sensor_data;

@@ -9,10 +9,10 @@
 
 static const char *TAG = "PMS5003";
 
-// GPIO pins for PMS5003
-#define PMS5003_RX_PIN 16      // RX on GPIO 16
-#define PMS5003_TX_PIN 17      // TX on GPIO 17
-#define PMS5003_SET_PIN 5      // SET pin on GPIO 5 (LOW = awake, HIGH = sleep)
+// GPIO pins for PMS5003 (crossed UART)
+#define PMS5003_RX_PIN 25      // ESP32 RX on GPIO 25
+#define PMS5003_TX_PIN 26      // ESP32 TX on GPIO 26
+#define PMS5003_SET_PIN 27     // SET pin on GPIO 27 (LOW = awake, HIGH = sleep)
 #define PMS5003_UART_NUM UART_NUM_1
 #define PMS5003_UART_BAUD 9600
 #define PMS5003_BUF_SIZE 1024

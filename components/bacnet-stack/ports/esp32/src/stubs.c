@@ -2,10 +2,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "esp_timer.h"
 #include "bacnet/bacdef.h"
 #include "bacnet/datetime.h"
 #include "bacnet/wp.h"
 #include "bacnet/apdu.h"
+#include "bacnet/basic/sys/mstimer.h"
 
 /* datetime_local - used by device.c Update_Current_Time() 
    Returns: bool, sets date and time pointers, UTC offset and daylight saving */
@@ -73,4 +75,10 @@ void debug_printf(const char *format, ...)
 {
     (void)format;
     /* No-op for minimal build */
+}
+
+/* mstimer_now - returns millisecond tick count */
+unsigned long mstimer_now(void)
+{
+    return (unsigned long)(esp_timer_get_time() / 1000ULL);
 }

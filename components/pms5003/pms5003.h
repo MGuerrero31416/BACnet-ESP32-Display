@@ -9,9 +9,9 @@ extern "C" {
 #endif
 
 // GPIO Configuration
-#define PMS5003_RX_PIN 16     // RX on GPIO 16 (Serial1)
-#define PMS5003_TX_PIN 17     // TX on GPIO 17 (Serial1)
-#define PMS5003_SET_PIN 5     // Set pin for sleep mode control (free GPIO)
+#define PMS5003_RX_PIN 25     // ESP32 RX on GPIO 25 (Serial1)
+#define PMS5003_TX_PIN 26     // ESP32 TX on GPIO 26 (Serial1)
+#define PMS5003_SET_PIN 27    // Set pin for sleep mode control (free GPIO)
 #define PMS5003_UART_NUM UART_NUM_1
 
 // Sensor data structure - matches PMS5003 frame layout exactly
@@ -94,8 +94,8 @@ uint16_t pms5003_get_pm10(void);
 void pms5003_get_data(pms5003_data_t *data);
 
 /**
- * @brief Control PMS5003 SET pin (GPIO5) from BACnet Binary Output
- * @param state 0 (BINARY_INACTIVE/OFF) = AWAKE (GPIO5 LOW), 1 (BINARY_ACTIVE/ON) = SLEEP (GPIO5 HIGH)
+ * @brief Control PMS5003 SET pin (GPIO27) from BACnet Binary Output
+ * @param state 0 (BINARY_INACTIVE/OFF) = AWAKE (GPIO27 LOW), 1 (BINARY_ACTIVE/ON) = SLEEP (GPIO27 HIGH)
  */
 void pms5003_set_gpio_from_bo(uint32_t state);
 

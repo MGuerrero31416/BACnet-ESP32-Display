@@ -2,11 +2,14 @@
 
 ESP32-based BACnet/IP device with ST7789 TFT display featuring 20 BACnet objects: 4 Analog Values, 4 Binary Values, 4 Analog Inputs, 4 Binary Inputs, and 4 Binary Outputs. Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring.
 
+It simmultaneouslly connects the BACnet device through WiFi and MS/TP (using a MAX RS485 module)
+
 You can easily add extra BACnet objects and map them to ESP32 GPIO for analog and digital inputs/outputs.
 
 ## Features
 
 - **BACnet/IP Protocol**: Full BACnet/IP stack implementation
+- **BACnet MS/TP**: RS485 MS/TP support alongside BACnet/IP
 - **Live Display**: Real-time monitoring of BACnet objects on 170x320 TFT display
 - **20 BACnet Objects**:
   - 4 Analog Values (AV1-4) - read/write with COV and NVS persistence
@@ -48,9 +51,9 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 - **Model**: Plantower PMS5003
 - **Communication**: UART (9600 baud, 8N1)
 - **Connections**:
-  - RX: GPIO 16 (ESP32 RX from sensor TX)
-  - TX: GPIO 17 (ESP32 TX to sensor RX)
-  - SET (Sleep Control): GPIO 5 (LOW = AWAKE, HIGH = SLEEP) — controlled by BO1 (PMS5003_SET)
+  - PMS5003 TX → ESP32 GPIO25 (RX1)
+  - PMS5003 RX → ESP32 GPIO26 (TX1)
+  - SET (Sleep Control): GPIO 27 (LOW = AWAKE, HIGH = SLEEP) — controlled by BO1 (PMS5003_SET)
   - Power: 5V (requires 5V supply, not 3.3V)
   - GND: ESP32 GND
 - **Measurements**:
@@ -70,7 +73,16 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 ### WiFi Connectivity
 - Built-in ESP32 WiFi for BACnet/IP communication
 - Configured via SSID/password in wifi_helper.c
-- Static IP option in wifi_helper.c. Set WIFI_USE_STATIC_IP to 1 or 0.
+- Static IP option in wifi_helper.c. Set WIFI_USE_STATIC_IP to 1 or 0 in wifi_helper.c
+
+### BACnet MS/TP (RS485)
+- **Transceiver**: MAX485 or equivalent RS485 converter
+- **UART**: UART2
+- **Connections**:
+  - DI (TX) → ESP32 GPIO17
+  - RO (RX) → ESP32 GPIO16
+  - DE/RE → ESP32 GPIO5
+- **Baud Rate**: 38400 (default)
 
 ## GPIO Summary
 
@@ -79,9 +91,12 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 | GPIO 2  | TFT Display | DC (Data/Command)   |
 | GPIO 4  | TFT Display | RST (Reset)         |
 | GPIO 15 | TFT Display | CS (Chip Select)    |
-| GPIO 16 | PMS5003     | RX (sensor TX)      |
-| GPIO 17 | PMS5003     | TX (sensor RX)      |
-| GPIO 5  | PMS5003     | SET (Sleep Control) |
+| GPIO 16 | MAX485      | RO (RX)             |
+| GPIO 17 | MAX485      | DI (TX)             |
+| GPIO 5  | MAX485      | DE/RE               |
+| GPIO 25 | PMS5003     | RX (sensor TX)      |
+| GPIO 26 | PMS5003     | TX (sensor RX)      |
+| GPIO 27 | PMS5003     | SET (Sleep Control) |
 | GPIO 18 | TFT Display | SCLK (SPI Clock)    |
 | GPIO 23 | TFT Display | MOSI (SPI Data)     |
 | GPIO 32 | TFT Display | BACKLIGHT           |
@@ -181,7 +196,7 @@ CONFIG_FREERTOS_HZ=1000
 
 ## BACnet Integration
 
-The device broadcasts its Device ID and manages BACnet objects that can be read/written by any BACnet/IP client (e.g., YABE, Tridium Niagara, Metasys).
+The device broadcasts its Device ID and manages BACnet objects that can be read/written by any BACnet/IP or BACnet MS/TP client (e.g., YABE, Tridium Niagara, Metasys).
 
 ### BACnet Objects Exposed
 
