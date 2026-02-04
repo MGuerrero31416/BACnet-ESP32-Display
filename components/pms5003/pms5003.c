@@ -69,34 +69,34 @@ bool pms5003_read(pms5003_data_t *data)
     uint8_t buffer[32];
     int length = 0;
     
-    // Flush old data to get freshest reading (sensor sends data every ~1 second)
-    uart_flush_input(PMS5003_UART_NUM);
-    vTaskDelay(pdMS_TO_TICKS(50)); // Wait for fresh data
-    
-    // Try to read first byte with short timeout - if nothing comes, sensor is disconnected
-    uint8_t byte;
-    length = uart_read_bytes(PMS5003_UART_NUM, &byte, 1, pdMS_TO_TICKS(100));
-    if (length != 1) {
-        return false;  // Timeout - no data available, sensor likely disconnected
+    // Sync to frame header 0x42 0x4D
+    uint8_t byte = 0;
+    int sync_tries = 0;
+    while (sync_tries < 64) {
+        length = uart_read_bytes(PMS5003_UART_NUM, &byte, 1, pdMS_TO_TICKS(200));
+        if (length != 1) {
+            return false;  // Timeout - no data available
+        }
+        if (byte == 0x42) {
+            uint8_t next = 0;
+            length = uart_read_bytes(PMS5003_UART_NUM, &next, 1, pdMS_TO_TICKS(200));
+            if (length == 1 && next == 0x4D) {
+                buffer[0] = 0x42;
+                buffer[1] = 0x4D;
+                break;
+            }
+        }
+        sync_tries++;
+    }
+    if (sync_tries >= 64) {
+        return false;  // Failed to sync to frame header
     }
     
-    // If not frame start (0x42), discard and return false
-    if (byte != 0x42) {
-        return false;  // Not at frame start
-    }
+    // Read remaining 30 bytes (frame length 32)
+    length = uart_read_bytes(PMS5003_UART_NUM, buffer + 2, 30, pdMS_TO_TICKS(300));
     
-    // Store first header byte and read remaining 31 bytes
-    buffer[0] = 0x42;
-    length = uart_read_bytes(PMS5003_UART_NUM, buffer + 1, 31, pdMS_TO_TICKS(100));
-    
-    if (length != 31) {
-        ESP_LOGW(TAG, "Failed to read complete frame, got %d bytes", length);
-        return false;
-    }
-    
-    // Verify second header byte
-    if (buffer[1] != 0x4D) {
-        ESP_LOGE(TAG, "Invalid frame header, got 0x%02X", buffer[1]);
+    if (length != 30) {
+        ESP_LOGW(TAG, "Failed to read complete frame, got %d bytes", length + 2);
         return false;
     }
     

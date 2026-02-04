@@ -70,6 +70,7 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 ### WiFi Connectivity
 - Built-in ESP32 WiFi for BACnet/IP communication
 - Configured via SSID/password in wifi_helper.c
+- Static IP option in wifi_helper.c. Set WIFI_USE_STATIC_IP to 1 and it will static IP. Set it to 0 to keep DHCP.
 
 ## GPIO Summary
 
