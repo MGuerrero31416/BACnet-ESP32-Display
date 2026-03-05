@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "User_Settings.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/av.h"
@@ -12,57 +13,6 @@ static const char *TAG = "bacnet_av";
 
 /* Override NVS values with code defaults - set in main config */
 extern int override_nvs_on_flash;
-
-/* ===========================================================================================
- * ANALOG VALUE CONFIGURATION - 
- * =========================================================================================== */
-
-/* Analog Value instances to create */
-static const uint32_t AV_INSTANCES[] = { 1, 2, 3, 4 };
-
-/* Analog Value names */
-static const char *AV_NAMES[] = {
-    "AV1",
-    "AV2",
-    "AV3",
-    "AV4"
-};
-
-/* Analog Value descriptions (per instance) */
-static const char *AV_DESCRIPTIONS[] = {
-    "PM2.5 from PMS5003",
-    "Analog Value 2",
-    "Analog Value 3",
-    "Analog Value 4"
-};
-
-/* Analog Value units (per instance) */
-static const uint16_t AV_UNITS[] = {
-    UNITS_MICROGRAMS_PER_CUBIC_METER,  /* PM2.5 */
-    UNITS_DEGREES_CELSIUS,             /* AV2 - reserved */
-    UNITS_DEGREES_CELSIUS,             /* AV3 - reserved */
-    UNITS_DEGREES_CELSIUS              /* AV4 - reserved */
-};
-
-/* Analog Value initial values (per instance) */
-static const float AV_INITIAL_VALUES[] = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f
-};
-
-/* Analog Value COV increment (per instance) */
-static const float AV_COV_INCREMENTS[] = {
-    1.0f,
-    1.0f,
-    1.0f,
-    1.0f
-};
-
-/* ===========================================================================================
- * END CONFIGURATION
- * =========================================================================================== */
 
 void bacnet_nvs_save_av_name(uint32_t instance, const char *name, uint16_t length) {
     nvs_handle_t nvs_handle;
@@ -200,16 +150,16 @@ void bacnet_nvs_load_av(uint32_t instance) {
 
 void bacnet_create_analog_values(void) {
     size_t i = 0;
-    size_t num_instances = sizeof(AV_INSTANCES) / sizeof(AV_INSTANCES[0]);
+    size_t num_instances = USER_AV_COUNT;
 
     for (i = 0; i < num_instances; i++) {
-        uint32_t instance = AV_INSTANCES[i];
+        uint32_t instance = USER_AV_INSTANCES[i];
         Analog_Value_Create(instance);
-        Analog_Value_Name_Set(instance, AV_NAMES[i]);
-        Analog_Value_Description_Set(instance, AV_DESCRIPTIONS[i]);
-        Analog_Value_Units_Set(instance, AV_UNITS[i]);
-        Analog_Value_Present_Value_Set(instance, AV_INITIAL_VALUES[i], 16);
-        Analog_Value_COV_Increment_Set(instance, AV_COV_INCREMENTS[i]);
+        Analog_Value_Name_Set(instance, USER_AV_NAMES[i]);
+        Analog_Value_Description_Set(instance, USER_AV_DESCRIPTIONS[i]);
+        Analog_Value_Units_Set(instance, USER_AV_UNITS[i]);
+        Analog_Value_Present_Value_Set(instance, USER_AV_INITIAL_VALUES[i], 16);
+        Analog_Value_COV_Increment_Set(instance, USER_AV_COV_INCREMENTS[i]);
         Analog_Value_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
         Analog_Value_Out_Of_Service_Set(instance, false);
         /* Load persisted values from NVS (if any) - unless override flag is set */

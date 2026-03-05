@@ -32,6 +32,9 @@
 /* me! */
 #include "bo.h"
 
+extern void bacnet_nvs_save_bo_name(uint32_t instance, const char *name, uint16_t length);
+extern void bacnet_nvs_save_bo_desc(uint32_t instance, const char *desc, uint16_t length);
+
 static const char *Default_Active_Text = "Active";
 static const char *Default_Inactive_Text = "Inactive";
 struct object_data {
@@ -1215,6 +1218,50 @@ bool Binary_Output_Write_Property(BACNET_WRITE_PROPERTY_DATA *wp_data)
             if (status) {
                 Binary_Output_Relinquish_Default_Set(
                     wp_data->object_instance, value.type.Enumerated);
+            }
+            break;
+        case PROP_OBJECT_NAME:
+            status = write_property_type_valid(
+                wp_data, &value, BACNET_APPLICATION_TAG_CHARACTER_STRING);
+            if (status) {
+                uint16_t len = value.type.Character_String.length;
+                size_t copy_len = len;
+                if (copy_len > 64) {
+                    copy_len = 64;
+                }
+                char *name_buf = calloc(copy_len + 1, 1);
+                if (name_buf) {
+                    if (copy_len > 0) {
+                        memcpy(name_buf, value.type.Character_String.value, copy_len);
+                    }
+                    name_buf[copy_len] = 0;
+                    Binary_Output_Name_Set(wp_data->object_instance, name_buf);
+                }
+                bacnet_nvs_save_bo_name(wp_data->object_instance,
+                    (const char *)value.type.Character_String.value,
+                    value.type.Character_String.length);
+            }
+            break;
+        case PROP_DESCRIPTION:
+            status = write_property_type_valid(
+                wp_data, &value, BACNET_APPLICATION_TAG_CHARACTER_STRING);
+            if (status) {
+                uint16_t len = value.type.Character_String.length;
+                size_t copy_len = len;
+                if (copy_len > 128) {
+                    copy_len = 128;
+                }
+                char *desc_buf = calloc(copy_len + 1, 1);
+                if (desc_buf) {
+                    if (copy_len > 0) {
+                        memcpy(desc_buf, value.type.Character_String.value, copy_len);
+                    }
+                    desc_buf[copy_len] = 0;
+                    Binary_Output_Description_Set(wp_data->object_instance, desc_buf);
+                }
+                bacnet_nvs_save_bo_desc(wp_data->object_instance,
+                    (const char *)value.type.Character_String.value,
+                    value.type.Character_String.length);
             }
             break;
         default:

@@ -2,25 +2,28 @@
 
 ESP32-based BACnet/IP device with ST7789 TFT display featuring 20 BACnet objects: 4 Analog Values, 4 Binary Values, 4 Analog Inputs, 4 Binary Inputs, and 4 Binary Outputs. Includes built-in PMS5003 air quality sensor for PM2.5/PM1.0/PM10 monitoring.
 
-It simmultaneouslly connects the BACnet device through WiFi and MS/TP (using a MAX RS485 module)
+It can simultaneously connect the BACnet device through WiFi (BACnet/IP) and MS/TP (RS485 using a MAX485 module).
 
 You can easily add extra BACnet objects and map them to ESP32 GPIO for analog and digital inputs/outputs.
 
 ## Features
 
 - **BACnet/IP Protocol**: Full BACnet/IP stack implementation
-- **BACnet MS/TP**: RS485 MS/TP support alongside BACnet/IP
+- **BACnet MS/TP**: RS485 MS/TP support alongside BACnet/IP (dual stack)
 - **Live Display**: Real-time monitoring of BACnet objects on 170x320 TFT display
 - **20 BACnet Objects**:
   - 4 Analog Values (AV1-4) - read/write with COV and NVS persistence
   - 4 Binary Values (BV1-4) - read/write with COV and NVS persistence
-  - 4 Analog Inputs (AI1-4) - read-only sensor inputs with COV and NVS persistence
-  - 4 Binary Inputs (BI1-4) - read-only binary states with COV and NVS persistence
+  - 4 Analog Inputs (AI1-4) - sensor inputs with COV and NVS persistence
+  - 4 Binary Inputs (BI1-4) - binary states with COV and NVS persistence
   - 4 Binary Outputs (BO1-4) - writable control outputs with COV and NVS persistence
+- **Writable Metadata**: Object `Name` and `Description` are writable for AV/BV/AI/BI/BO
 - **WiFi Connectivity**: ESP32 with built-in WiFi for BACnet/IP communication
 - **Arduino Framework**: Leverages Arduino ecosystem for easy hardware control
 - **Change of Value (COV)**: Implements BACnet COV notifications for efficient real-time updates
 - **Persistent Storage**: Attribute values modifiable from BACnet supervisor are automatically saved to ESP32 non-volatile memory (NVS) for retention across power cycles
+- **NVS Override**: When `OVERRIDE_NVS_ON_FLASH=1`, NVS is erased on boot and all values reset to defaults
+- **Centralized Configuration**: User settings are centralized in `User_Settings.c`
 - **Air Quality Monitoring**: PMS5003 PM2.5/PM1.0/PM10 sensor with automatic BACnet integration
 
 ## Photos
@@ -72,8 +75,8 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 
 ### WiFi Connectivity
 - Built-in ESP32 WiFi for BACnet/IP communication
-- Configured via SSID/password in wifi_helper.c
-- Static IP option in wifi_helper.c. Set WIFI_USE_STATIC_IP to 1 or 0 in wifi_helper.c
+- Configured via [main/User_Settings.c](main/User_Settings.c)
+- Static IP option in [main/User_Settings.c](main/User_Settings.c). Set `USER_WIFI_USE_STATIC_IP` to 1 or 0
 
 ### BACnet MS/TP (RS485)
 - **Transceiver**: MAX485 or equivalent RS485 converter
@@ -83,6 +86,8 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
   - RO (RX) → ESP32 GPIO16
   - DE/RE → ESP32 GPIO5
 - **Baud Rate**: 38400 (default)
+- **MS/TP Settings**: MAC 6, Max Master 127, Max Info Frames 80
+- **Discovery**: Some controllers (e.g., NAE) require manual add on the MS/TP field bus
 
 ## GPIO Summary
 
@@ -149,17 +154,27 @@ Arduino framework requires FreeRTOS tick rate of 1000Hz. This is set in [sdkconf
 CONFIG_FREERTOS_HZ=1000
 ```
 
+### User Settings (Centralized Configuration)
+
+Most user-configurable settings are centralized in [main/User_Settings.c](main/User_Settings.c) and declared in [main/User_Settings.h](main/User_Settings.h), including:
+
+- WiFi SSID/password and static IP settings
+- BACnet Device Instance and BBMD registration
+- BACnet/IP and MS/TP enable flags (`USER_ENABLE_BACNET_IP`, `USER_ENABLE_BACNET_MSTP`)
+- MS/TP parameters (MAC, baud rate, max master, max info frames)
+- Default object names, descriptions, units, and initial values
+
 ### BACnet Object Configuration
 
-- **Analog Values (AV1-4)**: Configure names, descriptions, units, and initial values in [main/analog_value.c](main/analog_value.c) - **ANALOG VALUE CONFIGURATION** section
+- **Analog Values (AV1-4)**: Configure names, descriptions, units, and initial values in [main/User_Settings.c](main/User_Settings.c)
 
-- **Binary Values (BV1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_value.c](main/binary_value.c) - **BINARY VALUE CONFIGURATION** section
+- **Binary Values (BV1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/User_Settings.c](main/User_Settings.c)
 
-- **Analog Inputs (AI1-4)**: Configure names, descriptions, units, and COV increments in [main/analog_input.c](main/analog_input.c) - **ANALOG INPUT CONFIGURATION** section. Read-only inputs suitable for sensor integration.
+- **Analog Inputs (AI1-4)**: Configure names, descriptions, units, and COV increments in [main/User_Settings.c](main/User_Settings.c). Read-only inputs suitable for sensor integration.
 
-- **Binary Inputs (BI1-4)**: Configure names, descriptions, active/inactive text in [main/binary_input.c](main/binary_input.c) - **BINARY INPUT CONFIGURATION** section. Read-only binary states.
+- **Binary Inputs (BI1-4)**: Configure names, descriptions, active/inactive text in [main/User_Settings.c](main/User_Settings.c). Read-only binary states.
 
-- **Binary Outputs (BO1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/binary_output.c](main/binary_output.c) - **BINARY OUTPUT CONFIGURATION** section. Writable control outputs with priority support.
+- **Binary Outputs (BO1-4)**: Configure names, descriptions, active/inactive text, and initial states in [main/User_Settings.c](main/User_Settings.c). Writable control outputs with priority support.
 
 ### Sensor Data Mapping
 
@@ -200,7 +215,7 @@ The device broadcasts its Device ID and manages BACnet objects that can be read/
 
 ### BACnet Objects Exposed
 
-- **Device**: 130 (configurable in main.c)
+- **Device**: 31416 (configurable in main.c)
 - **Analog Values**: Instance 1, 2, 3, 4
 - **Binary Values**: Instance 1, 2, 3, 4
 

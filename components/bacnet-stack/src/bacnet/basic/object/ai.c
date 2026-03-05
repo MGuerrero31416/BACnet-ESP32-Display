@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 /* BACnet Stack defines - first */
 #include "bacnet/bacdef.h"
 /* BACnet Stack API */
@@ -24,6 +25,9 @@
 #include "bacnet/basic/sys/debug.h"
 /* me! */
 #include "bacnet/basic/object/ai.h"
+
+extern void bacnet_nvs_save_ai_name(uint32_t instance, const char *name, uint16_t length);
+extern void bacnet_nvs_save_ai_desc(uint32_t instance, const char *desc, uint16_t length);
 
 /* Key List for storing the object data sorted by instance number  */
 static OS_Keylist Object_List;
@@ -1230,6 +1234,50 @@ bool Analog_Input_Write_Property(BACNET_WRITE_PROPERTY_DATA *wp_data)
                     wp_data->error_class = ERROR_CLASS_PROPERTY;
                     wp_data->error_code = ERROR_CODE_VALUE_OUT_OF_RANGE;
                 }
+            }
+            break;
+        case PROP_OBJECT_NAME:
+            status = write_property_type_valid(
+                wp_data, &value, BACNET_APPLICATION_TAG_CHARACTER_STRING);
+            if (status) {
+                uint16_t len = value.type.Character_String.length;
+                size_t copy_len = len;
+                if (copy_len > 64) {
+                    copy_len = 64;
+                }
+                char *name_buf = calloc(copy_len + 1, 1);
+                if (name_buf) {
+                    if (copy_len > 0) {
+                        memcpy(name_buf, value.type.Character_String.value, copy_len);
+                    }
+                    name_buf[copy_len] = 0;
+                    Analog_Input_Name_Set(wp_data->object_instance, name_buf);
+                }
+                bacnet_nvs_save_ai_name(wp_data->object_instance,
+                    (const char *)value.type.Character_String.value,
+                    value.type.Character_String.length);
+            }
+            break;
+        case PROP_DESCRIPTION:
+            status = write_property_type_valid(
+                wp_data, &value, BACNET_APPLICATION_TAG_CHARACTER_STRING);
+            if (status) {
+                uint16_t len = value.type.Character_String.length;
+                size_t copy_len = len;
+                if (copy_len > 128) {
+                    copy_len = 128;
+                }
+                char *desc_buf = calloc(copy_len + 1, 1);
+                if (desc_buf) {
+                    if (copy_len > 0) {
+                        memcpy(desc_buf, value.type.Character_String.value, copy_len);
+                    }
+                    desc_buf[copy_len] = 0;
+                    Analog_Input_Description_Set(wp_data->object_instance, desc_buf);
+                }
+                bacnet_nvs_save_ai_desc(wp_data->object_instance,
+                    (const char *)value.type.Character_String.value,
+                    value.type.Character_String.length);
             }
             break;
 #if defined(INTRINSIC_REPORTING)

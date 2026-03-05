@@ -2,7 +2,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdarg.h>
+#include <string.h>
 #include "esp_timer.h"
+#include "esp_log.h"
 #include "bacnet/bacdef.h"
 #include "bacnet/datetime.h"
 #include "bacnet/wp.h"
@@ -67,11 +70,39 @@ void handler_unrecognized_service(
 void debug_fprintf(void *stream, const char *format, ...)
 {
     (void)stream;
-    (void)format;
-    /* No-op for minimal build */
+    if (!format) {
+        return;
+    }
+    if (strncmp(format, "WP:", 3) != 0 &&
+        strncmp(format, "AV Write", 8) != 0) {
+        return;
+    }
+    char buffer[160];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    ESP_LOGW("bacnet_wp", "%s", buffer);
 }
 
 void debug_printf(const char *format, ...)
+{
+    if (!format) {
+        return;
+    }
+    if (strncmp(format, "WP:", 3) != 0 &&
+        strncmp(format, "AV Write", 8) != 0) {
+        return;
+    }
+    char buffer[160];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    ESP_LOGW("bacnet_wp", "%s", buffer);
+}
+
+void debug_printf_disabled(const char *format, ...)
 {
     (void)format;
     /* No-op for minimal build */

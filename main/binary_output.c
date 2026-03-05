@@ -13,62 +13,13 @@
 /* FreeRTOS for GPIO sync task */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "User_Settings.h"
 
 static const char *TAG = "bacnet_bo";
 #define NVS_NAMESPACE "bacnet"
 
 /* Override NVS values with code defaults - set in main config */
 extern int override_nvs_on_flash;
-
-/* ===========================================================================================
- * BINARY OUTPUT CONFIGURATION
- * =========================================================================================== */
-
-/* Binary Output instances to create */
-static const uint32_t BO_INSTANCES[] = { 1, 2, 3, 4 };
-
-/* Binary Output names */
-static const char *BO_NAMES[] = {
-    "PMS5003_SET",
-    "BO2",
-    "BO3",
-    "BO4"
-};
-
-/* Binary Output descriptions (per instance) */
-static const char *BO_DESCRIPTIONS[] = {
-    "PMS5003 Sleep Mode Control",
-    "Binary Output 2",
-    "Binary Output 3",
-    "Binary Output 4"
-};
-
-/* Binary Output active/inactive text (per instance) */
-static const char *BO_ACTIVE_TEXT[] = {
-    "SLEEP",
-    "ON",
-    "ON",
-    "ON"
-};
-
-static const char *BO_INACTIVE_TEXT[] = {
-    "AWAKE",
-    "OFF",
-    "OFF",
-    "OFF"
-};
-
-/* Binary Output initial states (per instance) */
-static const BACNET_BINARY_PV BO_INITIAL_VALUES[] = {
-    BINARY_INACTIVE,
-    BINARY_INACTIVE,
-    BINARY_INACTIVE,
-    BINARY_INACTIVE
-};
-
-/* ===========================================================================================
- * END CONFIGURATION
- * =========================================================================================== */
 
 void bacnet_nvs_save_bo_name(uint32_t instance, const char *name, uint16_t length) {
     nvs_handle_t nvs_handle;
@@ -178,16 +129,16 @@ void bacnet_nvs_load_bo(uint32_t instance) {
 
 void bacnet_create_binary_outputs(void) {
     size_t i = 0;
-    size_t num_instances = sizeof(BO_INSTANCES) / sizeof(BO_INSTANCES[0]);
+    size_t num_instances = USER_BO_COUNT;
 
     for (i = 0; i < num_instances; i++) {
-        uint32_t instance = BO_INSTANCES[i];
+        uint32_t instance = USER_BO_INSTANCES[i];
         Binary_Output_Create(instance);
-        Binary_Output_Name_Set(instance, BO_NAMES[i]);
-        Binary_Output_Description_Set(instance, BO_DESCRIPTIONS[i]);
-        Binary_Output_Active_Text_Set(instance, BO_ACTIVE_TEXT[i]);
-        Binary_Output_Inactive_Text_Set(instance, BO_INACTIVE_TEXT[i]);
-        Binary_Output_Present_Value_Set(instance, BO_INITIAL_VALUES[i], 16);
+        Binary_Output_Name_Set(instance, USER_BO_NAMES[i]);
+        Binary_Output_Description_Set(instance, USER_BO_DESCRIPTIONS[i]);
+        Binary_Output_Active_Text_Set(instance, USER_BO_ACTIVE_TEXT[i]);
+        Binary_Output_Inactive_Text_Set(instance, USER_BO_INACTIVE_TEXT[i]);
+        Binary_Output_Present_Value_Set(instance, (BACNET_BINARY_PV)USER_BO_INITIAL_VALUES[i], 16);
         Binary_Output_Out_Of_Service_Set(instance, false);
         /* Load persisted values from NVS (if any) - unless override flag is set */
         if (!override_nvs_on_flash) {
@@ -196,13 +147,13 @@ void bacnet_create_binary_outputs(void) {
     }
 
     /* Set initial GPIO state for BO1 (PMS5003_SET) */
-    uint8_t bo1_initial_state = Binary_Output_Present_Value(BO_INSTANCES[0]);
+    uint8_t bo1_initial_state = Binary_Output_Present_Value(USER_BO_INSTANCES[0]);
     pms5003_set_gpio_from_bo(bo1_initial_state);
     
     ESP_LOGI(TAG, "Created %zu Binary Output objects", num_instances);
 }
 
-/* Update GPIO5 when BO1 (PMS5003_SET) is written from BACnet */
+/* Update PMS5003_SET when BO1 is written from BACnet */
 void bacnet_bo1_gpio_update(uint8_t state)
 {
     pms5003_set_gpio_from_bo(state);
@@ -217,7 +168,7 @@ static void bo1_gpio_sync_task(void *pvParameters)
     ESP_LOGI(TAG, "BO1 GPIO sync task started - monitoring BO1 for changes");
     
     while (1) {
-        uint8_t current_bo1_state = Binary_Output_Present_Value(BO_INSTANCES[0]);
+        uint8_t current_bo1_state = Binary_Output_Present_Value(USER_BO_INSTANCES[0]);
         
         /* If BO1 state changed, update PMS5003_SET */
         if (current_bo1_state != last_bo1_state) {

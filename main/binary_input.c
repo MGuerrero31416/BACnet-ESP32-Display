@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "User_Settings.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/bi.h"
@@ -12,56 +13,6 @@ static const char *TAG = "bacnet_bi";
 
 /* Override NVS values with code defaults - set in main config */
 extern int override_nvs_on_flash;
-
-/* ===========================================================================================
- * BINARY INPUT CONFIGURATION
- * =========================================================================================== */
-
-/* Binary Input instances to create */
-static const uint32_t BI_INSTANCES[] = { 1, 2, 3, 4 };
-
-/* Binary Input names */
-static const char *BI_NAMES[] = {
-    "BI1",
-    "BI2",
-    "BI3",
-    "BI4"
-};
-
-/* Binary Input descriptions (per instance) */
-static const char *BI_DESCRIPTIONS[] = {
-    "Binary Input 1",
-    "Binary Input 2",
-    "Binary Input 3",
-    "Binary Input 4"
-};
-
-/* Binary Input active/inactive text (per instance) */
-static const char *BI_ACTIVE_TEXT[] = {
-    "ACTIVE",
-    "ACTIVE",
-    "ACTIVE",
-    "ACTIVE"
-};
-
-static const char *BI_INACTIVE_TEXT[] = {
-    "INACTIVE",
-    "INACTIVE",
-    "INACTIVE",
-    "INACTIVE"
-};
-
-/* Binary Input initial states (per instance) */
-static const BACNET_BINARY_PV BI_INITIAL_VALUES[] = {
-    BINARY_INACTIVE,
-    BINARY_INACTIVE,
-    BINARY_INACTIVE,
-    BINARY_INACTIVE
-};
-
-/* ===========================================================================================
- * END CONFIGURATION
- * =========================================================================================== */
 
 void bacnet_nvs_save_bi_name(uint32_t instance, const char *name, uint16_t length) {
     nvs_handle_t nvs_handle;
@@ -171,16 +122,16 @@ void bacnet_nvs_load_bi(uint32_t instance) {
 
 void bacnet_create_binary_inputs(void) {
     size_t i = 0;
-    size_t num_instances = sizeof(BI_INSTANCES) / sizeof(BI_INSTANCES[0]);
+    size_t num_instances = USER_BI_COUNT;
 
     for (i = 0; i < num_instances; i++) {
-        uint32_t instance = BI_INSTANCES[i];
+        uint32_t instance = USER_BI_INSTANCES[i];
         Binary_Input_Create(instance);
-        Binary_Input_Name_Set(instance, BI_NAMES[i]);
-        Binary_Input_Description_Set(instance, BI_DESCRIPTIONS[i]);
-        Binary_Input_Active_Text_Set(instance, BI_ACTIVE_TEXT[i]);
-        Binary_Input_Inactive_Text_Set(instance, BI_INACTIVE_TEXT[i]);
-        Binary_Input_Present_Value_Set(instance, BI_INITIAL_VALUES[i]);
+        Binary_Input_Name_Set(instance, USER_BI_NAMES[i]);
+        Binary_Input_Description_Set(instance, USER_BI_DESCRIPTIONS[i]);
+        Binary_Input_Active_Text_Set(instance, USER_BI_ACTIVE_TEXT[i]);
+        Binary_Input_Inactive_Text_Set(instance, USER_BI_INACTIVE_TEXT[i]);
+        Binary_Input_Present_Value_Set(instance, (BACNET_BINARY_PV)USER_BI_INITIAL_VALUES[i]);
         Binary_Input_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
         Binary_Input_Out_Of_Service_Set(instance, false);
         /* Load persisted values from NVS (if any) - unless override flag is set */

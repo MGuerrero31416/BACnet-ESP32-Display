@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "User_Settings.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/bv.h"
@@ -12,56 +13,6 @@ static const char *TAG = "bacnet_bv";
 
 /* Override NVS values with code defaults - set in main config */
 extern int override_nvs_on_flash;
-
-/* ===========================================================================================
- * BINARY VALUE CONFIGURATION - 
- * =========================================================================================== */
-
-/* Binary Value instances to create */
-static const uint32_t BV_INSTANCES[] = { 1, 2, 3, 4 };
-
-/* Binary Value names */
-static const char *BV_NAMES[] = {
-    "BV1",
-    "BV2",
-    "BV3",
-    "BV4"
-};
-
-/* Binary Value descriptions (per instance) */
-static const char *BV_DESCRIPTIONS[] = {
-    "Binary Value 1",
-    "Binary Value 2",
-    "Binary Value 3",
-    "Binary Value 4"
-};
-
-/* Binary Value active/inactive text (per instance) */
-static const char *BV_ACTIVE_TEXT[] = {
-    "ACTIVE",
-    "ACTIVE",
-    "ACTIVE",
-    "ACTIVE"
-};
-
-static const char *BV_INACTIVE_TEXT[] = {
-    "INACTIVE",
-    "INACTIVE",
-    "INACTIVE",
-    "INACTIVE"
-};
-
-/* Binary Value initial states (per instance) */
-static const BACNET_BINARY_PV BV_INITIAL_VALUES[] = {
-    BINARY_ACTIVE,
-    BINARY_INACTIVE,
-    BINARY_ACTIVE,
-    BINARY_INACTIVE
-};
-
-/* ===========================================================================================
- * END CONFIGURATION
- * =========================================================================================== */
 
 void bacnet_nvs_save_bv_name(uint32_t instance, const char *name, uint16_t length) {
     nvs_handle_t nvs_handle;
@@ -171,16 +122,16 @@ void bacnet_nvs_load_bv(uint32_t instance) {
 
 void bacnet_create_binary_values(void) {
     size_t i = 0;
-    size_t num_instances = sizeof(BV_INSTANCES) / sizeof(BV_INSTANCES[0]);
+    size_t num_instances = USER_BV_COUNT;
 
     for (i = 0; i < num_instances; i++) {
-        uint32_t instance = BV_INSTANCES[i];
+        uint32_t instance = USER_BV_INSTANCES[i];
         Binary_Value_Create(instance);
-        Binary_Value_Name_Set(instance, BV_NAMES[i]);
-        Binary_Value_Description_Set(instance, BV_DESCRIPTIONS[i]);
-        Binary_Value_Active_Text_Set(instance, BV_ACTIVE_TEXT[i]);
-        Binary_Value_Inactive_Text_Set(instance, BV_INACTIVE_TEXT[i]);
-        Binary_Value_Present_Value_Set(instance, BV_INITIAL_VALUES[i]);
+        Binary_Value_Name_Set(instance, USER_BV_NAMES[i]);
+        Binary_Value_Description_Set(instance, USER_BV_DESCRIPTIONS[i]);
+        Binary_Value_Active_Text_Set(instance, USER_BV_ACTIVE_TEXT[i]);
+        Binary_Value_Inactive_Text_Set(instance, USER_BV_INACTIVE_TEXT[i]);
+        Binary_Value_Present_Value_Set(instance, (BACNET_BINARY_PV)USER_BV_INITIAL_VALUES[i]);
         Binary_Value_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
         Binary_Value_Out_Of_Service_Set(instance, false);
         Binary_Value_Write_Enable(instance);

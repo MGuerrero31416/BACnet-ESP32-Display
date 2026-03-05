@@ -11,3 +11,5 @@ uint32_t MSTP_RS485_Baud_Rate(void);
 bool MSTP_RS485_Baud_Rate_Set(uint32_t baud);
 uint32_t MSTP_RS485_Silence_Milliseconds(void);
 void MSTP_RS485_Silence_Reset(void);
+uint32_t MSTP_RS485_Rx_Bytes_Get_Reset(void);
+void MSTP_RS485_Preamble_Counts_Get_Reset(uint32_t *preamble55, uint32_t *preamble55ff);

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "User_Settings.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/ai.h"
@@ -12,57 +13,6 @@ static const char *TAG = "bacnet_ai";
 
 /* Override NVS values with code defaults - set in main config */
 extern int override_nvs_on_flash;
-
-/* ===========================================================================================
- * ANALOG INPUT CONFIGURATION
- * =========================================================================================== */
-
-/* Analog Input instances to create */
-static const uint32_t AI_INSTANCES[] = { 1, 2, 3, 4 };
-
-/* Analog Input names */
-static const char *AI_NAMES[] = {
-    "AI1",
-    "AI2",
-    "AI3",
-    "AI4"
-};
-
-/* Analog Input descriptions (per instance) */
-static const char *AI_DESCRIPTIONS[] = {
-    "Analog Input 1",
-    "Analog Input 2",
-    "Analog Input 3",
-    "Analog Input 4"
-};
-
-/* Analog Input units (per instance) */
-static const uint16_t AI_UNITS[] = {
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS,
-    UNITS_DEGREES_CELSIUS
-};
-
-/* Analog Input initial values (per instance) */
-static const float AI_INITIAL_VALUES[] = {
-    0.0f,
-    0.0f,
-    0.0f,
-    0.0f
-};
-
-/* Analog Input COV increment (per instance) - reserved for future use */
-static const float AI_COV_INCREMENTS[] __attribute__((unused)) = {
-    1.0f,
-    1.0f,
-    1.0f,
-    1.0f
-};
-
-/* ===========================================================================================
- * END CONFIGURATION
- * =========================================================================================== */
 
 void bacnet_nvs_save_ai_name(uint32_t instance, const char *name, uint16_t length) {
     nvs_handle_t nvs_handle;
@@ -173,15 +123,15 @@ void bacnet_nvs_load_ai(uint32_t instance) {
 
 void bacnet_create_analog_inputs(void) {
     size_t i = 0;
-    size_t num_instances = sizeof(AI_INSTANCES) / sizeof(AI_INSTANCES[0]);
+    size_t num_instances = USER_AI_COUNT;
 
     for (i = 0; i < num_instances; i++) {
-        uint32_t instance = AI_INSTANCES[i];
+        uint32_t instance = USER_AI_INSTANCES[i];
         Analog_Input_Create(instance);
-        Analog_Input_Name_Set(instance, AI_NAMES[i]);
-        Analog_Input_Description_Set(instance, AI_DESCRIPTIONS[i]);
-        Analog_Input_Units_Set(instance, AI_UNITS[i]);
-        Analog_Input_Present_Value_Set(instance, AI_INITIAL_VALUES[i]);
+        Analog_Input_Name_Set(instance, USER_AI_NAMES[i]);
+        Analog_Input_Description_Set(instance, USER_AI_DESCRIPTIONS[i]);
+        Analog_Input_Units_Set(instance, USER_AI_UNITS[i]);
+        Analog_Input_Present_Value_Set(instance, USER_AI_INITIAL_VALUES[i]);
         Analog_Input_Reliability_Set(instance, RELIABILITY_NO_FAULT_DETECTED);
         Analog_Input_Out_Of_Service_Set(instance, false);
         /* Load persisted values from NVS (if any) - unless override flag is set */

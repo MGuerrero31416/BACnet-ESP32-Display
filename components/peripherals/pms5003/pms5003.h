@@ -6,7 +6,7 @@
 // GPIO Configuration
 #define PMS5003_RX_PIN 16
 #define PMS5003_TX_PIN 17
-#define PMS5003_SET_PIN 5   // Set pin for sleep mode control (free GPIO)
+#define PMS5003_SET_PIN 27   // Set pin for sleep mode control
 #define PMS5003_UART_NUM UART_NUM_1
 
 // Sensor data structure

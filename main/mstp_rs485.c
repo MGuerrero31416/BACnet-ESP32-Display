@@ -20,6 +20,10 @@ static bool mstp_uart_initialized = false;
 static volatile bool mstp_tx_in_progress = false;
 static uint32_t mstp_baud_rate = MSTP_UART_BAUD_DEFAULT;
 static int64_t mstp_last_activity_us = 0;
+static volatile uint32_t mstp_rx_bytes = 0;
+static volatile uint32_t mstp_preamble_55 = 0;
+static volatile uint32_t mstp_preamble_55ff = 0;
+static uint8_t mstp_prev_byte = 0;
 
 static void mstp_rs485_set_tx_mode(bool enabled)
 {
@@ -120,6 +124,14 @@ bool MSTP_RS485_Read(uint8_t *buf)
     int len = uart_read_bytes(MSTP_UART_PORT, buf, 1, 0);
     if (len > 0) {
         mstp_last_activity_us = esp_timer_get_time();
+        mstp_rx_bytes += (uint32_t)len;
+        if (*buf == 0x55) {
+            mstp_preamble_55++;
+        }
+        if (mstp_prev_byte == 0x55 && *buf == 0xFF) {
+            mstp_preamble_55ff++;
+        }
+        mstp_prev_byte = *buf;
         return true;
     }
 
@@ -169,4 +181,23 @@ uint32_t MSTP_RS485_Silence_Milliseconds(void)
 void MSTP_RS485_Silence_Reset(void)
 {
     mstp_last_activity_us = esp_timer_get_time();
+}
+
+uint32_t MSTP_RS485_Rx_Bytes_Get_Reset(void)
+{
+    uint32_t count = mstp_rx_bytes;
+    mstp_rx_bytes = 0;
+    return count;
+}
+
+void MSTP_RS485_Preamble_Counts_Get_Reset(uint32_t *preamble55, uint32_t *preamble55ff)
+{
+    if (preamble55) {
+        *preamble55 = mstp_preamble_55;
+    }
+    if (preamble55ff) {
+        *preamble55ff = mstp_preamble_55ff;
+    }
+    mstp_preamble_55 = 0;
+    mstp_preamble_55ff = 0;
 }

@@ -12,7 +12,7 @@ static const char *TAG = "PMS5003";
 // GPIO pins for PMS5003 (crossed UART)
 #define PMS5003_RX_PIN 25      // ESP32 RX on GPIO 25
 #define PMS5003_TX_PIN 26      // ESP32 TX on GPIO 26
-#define PMS5003_SET_PIN 27     // SET pin on GPIO 27 (LOW = awake, HIGH = sleep)
+#define PMS5003_SET_PIN 27     // SET pin (LOW = awake, HIGH = sleep)
 #define PMS5003_UART_NUM UART_NUM_1
 #define PMS5003_UART_BAUD 9600
 #define PMS5003_BUF_SIZE 1024
@@ -26,9 +26,9 @@ static SemaphoreHandle_t pm_mutex = NULL;
  */
 void pms5003_init(void)
 {
-    ESP_LOGI(TAG, "Initializing PMS5003 sensor...");
+    // ESP_LOGI(TAG, "Initializing PMS5003 sensor...");
     
-    // Configure GPIO5 as PMS5003_SET pin (LOW = awake, HIGH = sleep)
+    // Configure PMS5003_SET pin (LOW = awake, HIGH = sleep)
     gpio_config_t gpio_cfg = {
         .pin_bit_mask = (1ULL << PMS5003_SET_PIN),
         .mode = GPIO_MODE_OUTPUT,
@@ -38,7 +38,7 @@ void pms5003_init(void)
     };
     gpio_config(&gpio_cfg);
     gpio_set_level(PMS5003_SET_PIN, 0);  // Start with sensor AWAKE (LOW)
-    ESP_LOGI(TAG, "GPIO5 configured as PMS5003_SET (set to AWAKE)");
+    // ESP_LOGI(TAG, "GPIO%d configured as PMS5003_SET (set to AWAKE)", PMS5003_SET_PIN);
     
     // Configure UART1 for PMS5003
     uart_config_t uart_config = {
@@ -55,9 +55,9 @@ void pms5003_init(void)
     ESP_ERROR_CHECK(uart_param_config(PMS5003_UART_NUM, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(PMS5003_UART_NUM, PMS5003_TX_PIN, PMS5003_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     
-    ESP_LOGI(TAG, "UART1 configured (RX=GPIO%d, TX=GPIO%d, Baud=%d)", PMS5003_RX_PIN, PMS5003_TX_PIN, PMS5003_UART_BAUD);
+    // ESP_LOGI(TAG, "UART1 configured (RX=GPIO%d, TX=GPIO%d, Baud=%d)", PMS5003_RX_PIN, PMS5003_TX_PIN, PMS5003_UART_BAUD);
     
-    ESP_LOGI(TAG, "PMS5003 initialization complete");
+    // ESP_LOGI(TAG, "PMS5003 initialization complete");
 }
 
 /**
@@ -96,7 +96,7 @@ bool pms5003_read(pms5003_data_t *data)
     length = uart_read_bytes(PMS5003_UART_NUM, buffer + 2, 30, pdMS_TO_TICKS(300));
     
     if (length != 30) {
-        ESP_LOGW(TAG, "Failed to read complete frame, got %d bytes", length + 2);
+        // ESP_LOGW(TAG, "Failed to read complete frame, got %d bytes", length + 2);
         return false;
     }
     
@@ -109,7 +109,7 @@ bool pms5003_read(pms5003_data_t *data)
     uint16_t received_checksum = ((uint16_t)buffer[30] << 8) | buffer[31];
     
     if (sum != received_checksum) {
-        ESP_LOGE(TAG, "Checksum error: calculated 0x%04X received 0x%04X", sum, received_checksum);
+        // ESP_LOGE(TAG, "Checksum error: calculated 0x%04X received 0x%04X", sum, received_checksum);
         return false;
     }
     
@@ -125,7 +125,7 @@ bool pms5003_read(pms5003_data_t *data)
         data_ptr[i] = (v >> 8) | (v << 8);
     }
     
-    ESP_LOGI(TAG, "PM1.0: %u, PM2.5: %u, PM10: %u μg/m³", data->pm1_0, data->pm2_5, data->pm10);
+    // ESP_LOGI(TAG, "PM1.0: %u, PM2.5: %u, PM10: %u μg/m³", data->pm1_0, data->pm2_5, data->pm10);
     return true;
 }
 
@@ -134,7 +134,7 @@ bool pms5003_read(pms5003_data_t *data)
  */
 void pms5003_sleep(void)
 {
-    ESP_LOGI(TAG, "PMS5003 sleep mode not implemented");
+    // ESP_LOGI(TAG, "PMS5003 sleep mode not implemented");
 }
 
 /**
@@ -142,7 +142,7 @@ void pms5003_sleep(void)
  */
 void pms5003_wake(void)
 {
-    ESP_LOGI(TAG, "PMS5003 wake mode not implemented");
+    // ESP_LOGI(TAG, "PMS5003 wake mode not implemented");
 }
 
 /**
@@ -150,21 +150,21 @@ void pms5003_wake(void)
  */
 void pms5003_print_data(const pms5003_data_t *data)
 {
-    printf("\n========== PMS5003 Sensor Data ==========\n");
+    // printf("\n========== PMS5003 Sensor Data ==========\n");
     // printf("PM1.0:  %u μg/m³ (STD: %u μg/m³)\n", data->pm1_0, data->pm1_0_atm);
     // printf("PM2.5:  %u μg/m³ (STD: %u μg/m³)\n", data->pm2_5, data->pm2_5_atm);
     // printf("PM10:   %u μg/m³ (STD: %u μg/m³)\n", data->pm10, data->pm10_atm);
-    printf("PM1.0:  %u μg/m³\n", data->pm1_0_atm);
-    printf("PM2.5:  %u μg/m³\n", data->pm2_5_atm);
-    printf("PM10:   %u μg/m³\n", data->pm10_atm);
-    printf("\nParticle counts (per 0.1L air):\n");
-    printf("  >0.3μm:  %u\n", data->particles_0_3);
-    printf("  >0.5μm:  %u\n", data->particles_0_5);
-    printf("  >1.0μm:  %u\n", data->particles_1_0);
-    printf("  >2.5μm:  %u\n", data->particles_2_5);
-    printf("  >5.0μm:  %u\n", data->particles_5_0);
-    printf("  >10.0μm: %u\n", data->particles_10_0);
-    printf("=========================================\n\n");
+    // printf("PM1.0:  %u μg/m³\n", data->pm1_0_atm);
+    // printf("PM2.5:  %u μg/m³\n", data->pm2_5_atm);
+    // printf("PM10:   %u μg/m³\n", data->pm10_atm);
+    // printf("\nParticle counts (per 0.1L air):\n");
+    // printf("  >0.3μm:  %u\n", data->particles_0_3);
+    // printf("  >0.5μm:  %u\n", data->particles_0_5);
+    // printf("  >1.0μm:  %u\n", data->particles_1_0);
+    // printf("  >2.5μm:  %u\n", data->particles_2_5);
+    // printf("  >5.0μm:  %u\n", data->particles_5_0);
+    // printf("  >10.0μm: %u\n", data->particles_10_0);
+    // printf("=========================================\n\n");
 }
 
 /**
@@ -175,7 +175,7 @@ static void pms5003_read_task(void *pvParameters)
     uint32_t interval_ms = (uint32_t)(uintptr_t)pvParameters;
     pms5003_data_t data;
     
-    ESP_LOGI(TAG, "PMS5003 sensor task started (interval: %lu ms)", interval_ms);
+    // ESP_LOGI(TAG, "PMS5003 sensor task started (interval: %lu ms)", interval_ms);
     
     for (;;) {
         if (pms5003_read(&data) == true) {
@@ -189,7 +189,7 @@ static void pms5003_read_task(void *pvParameters)
                 memcpy(&current_data, &data, sizeof(pms5003_data_t));
             }
         } else {
-            ESP_LOGW(TAG, "Failed to read from PMS5003 sensor");
+            // ESP_LOGW(TAG, "Failed to read from PMS5003 sensor");
         }
         
         vTaskDelay(pdMS_TO_TICKS(interval_ms));
@@ -209,7 +209,7 @@ void pms5003_start_task(uint32_t interval_ms)
     if (pm_mutex == NULL) {
         pm_mutex = xSemaphoreCreateMutex();
         if (pm_mutex == NULL) {
-            ESP_LOGE(TAG, "Failed to create PM data mutex");
+            // ESP_LOGE(TAG, "Failed to create PM data mutex");
             return;
         }
     }
@@ -217,7 +217,7 @@ void pms5003_start_task(uint32_t interval_ms)
     xTaskCreate(pms5003_read_task, "pms5003_task", 4096, 
                 (void *)(uintptr_t)interval_ms, 5, NULL);
     
-    ESP_LOGI(TAG, "PMS5003 reading task created");
+    // ESP_LOGI(TAG, "PMS5003 reading task created");
 }
 
 /**
@@ -297,14 +297,15 @@ void pms5003_get_data(pms5003_data_t *data)
     }
 }
 /**
- * @brief Control PMS5003 SET pin (GPIO5) from BACnet Binary Output
- * OFF/INACTIVE (0) = AWAKE (GPIO5 LOW)
- * ON/ACTIVE (1) = SLEEP (GPIO5 HIGH)
+ * @brief Control PMS5003 SET pin from BACnet Binary Output
+ * OFF/INACTIVE (0) = AWAKE (LOW)
+ * ON/ACTIVE (1) = SLEEP (HIGH)
  */
 void pms5003_set_gpio_from_bo(uint32_t state)
 {
     uint32_t gpio_level = (state != 0) ? 1 : 0;  // 1 = sleep, 0 = awake
     gpio_set_level(PMS5003_SET_PIN, gpio_level);
-    ESP_LOGI(TAG, "PMS5003_SET (GPIO5)=%lu (%s)",
-             gpio_level, gpio_level ? "SLEEP" : "AWAKE");
+    ESP_LOGI(TAG, "PMS5003_SET (GPIO%u)=%lu (%s)",
+             (unsigned)PMS5003_SET_PIN, gpio_level,
+             gpio_level ? "SLEEP" : "AWAKE");
 }

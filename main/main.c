@@ -19,6 +19,7 @@
 #include "binary_output.h"
 #include "pms5003.h"
 #include "mstp_rs485.h"
+#include "User_Settings.h"
 
 /* bacnet-stack headers */
 #include "bacnet/basic/object/device.h"
@@ -41,34 +42,16 @@
 #include "bacnet/basic/service/h_rpm.h"
 #include "bacnet/basic/service/h_wp.h"
 #include "bacnet/basic/service/h_whois.h"
+#include "bacnet/basic/service/h_iam.h"
 #include "bacnet/basic/service/h_cov.h"
+#include "bacnet/basic/service/s_whois.h"
 #include "bacnet/npdu.h"
 #include "bacnet/basic/npdu/h_npdu.h"
+#include "bacnet/bacenum.h"
 
 static const char *TAG = "bacnet";
 
-/* BACnet device settings */
-#define BACNET_DEVICE_INSTANCE 31416
-
-// ========================================================================================
-/* Set to 1 to override NVS values with code defaults on flash, 0 to use persisted values */
-#define OVERRIDE_NVS_ON_FLASH 1
-int override_nvs_on_flash = OVERRIDE_NVS_ON_FLASH;  /* Exported for AV/BV modules */
-// =========================================================================================
-
-/* BBMD foreign device registration */
-#define BBMD_IP_OCTET_1 10
-#define BBMD_IP_OCTET_2 113
-#define BBMD_IP_OCTET_3 33
-#define BBMD_IP_OCTET_4 1
-#define BBMD_PORT 0xBAC0
-#define BBMD_TTL_SECONDS 600
-
-/* BACnet MS/TP settings */
-#define MSTP_MAC_ADDRESS 1
-#define MSTP_MAX_INFO_FRAMES 1
-#define MSTP_MAX_MASTER 127
-#define MSTP_BAUD_RATE 38400U
+int override_nvs_on_flash = 0;  /* Exported for AV/BV modules */
 
 static void bacnet_register_with_bbmd(void);
 static void bacnet_receive_task(void *pvParameters);
@@ -77,9 +60,31 @@ static void bacnet_cov_task(void *pvParameters);
 static void pms5003_task(void *pvParameters);
 static TaskHandle_t bacnet_cov_task_handle = NULL;
 static SemaphoreHandle_t bacnet_datalink_mutex = NULL;
+static volatile uint32_t mstp_pdu_count = 0;
+static volatile uint32_t mstp_apdu_count = 0;
+static volatile uint32_t mstp_rp_total = 0;
+static volatile uint32_t mstp_wp_total = 0;
+static float mstp_rp_last_value = 0.0f;
+
+static void bacnet_log_whois_iam(const uint8_t *apdu, int apdu_len, const char *link)
+{
+    if (!apdu || apdu_len < 2) {
+        return;
+    }
+
+    uint8_t pdu_type = apdu[0] & 0xF0;
+    if (pdu_type != PDU_TYPE_UNCONFIRMED_SERVICE_REQUEST) {
+        return;
+    }
+
+    uint8_t service_choice = apdu[1];
+    (void)service_choice;
+    (void)link;
+}
 
 static char datalink_bip[] = "bip";
 static char datalink_mstp[] = "mstp";
+static char *datalink_default = NULL;
 
 static uint8_t mstp_rx_buffer[512];
 static uint8_t mstp_tx_buffer[512];
@@ -106,7 +111,9 @@ static void bacnet_datalink_lock(char *name)
 
 static void bacnet_datalink_unlock(void)
 {
-    datalink_set(datalink_bip);
+    if (datalink_default) {
+        datalink_set(datalink_default);
+    }
     if (bacnet_datalink_mutex) {
         xSemaphoreGive(bacnet_datalink_mutex);
     }
@@ -127,10 +134,10 @@ static bool bacnet_mstp_init(void)
     mstp_port.OutputBufferSize = sizeof(mstp_tx_buffer);
 
     dlmstp_set_interface((const char *)&mstp_port);
-    dlmstp_set_mac_address(MSTP_MAC_ADDRESS);
-    dlmstp_set_max_info_frames(MSTP_MAX_INFO_FRAMES);
-    dlmstp_set_max_master(MSTP_MAX_MASTER);
-    dlmstp_set_baud_rate(MSTP_BAUD_RATE);
+    dlmstp_set_mac_address(USER_MSTP_MAC_ADDRESS);
+    dlmstp_set_max_info_frames(USER_MSTP_MAX_INFO_FRAMES);
+    dlmstp_set_max_master(USER_MSTP_MAX_MASTER);
+    dlmstp_set_baud_rate(USER_MSTP_BAUD_RATE);
     dlmstp_slave_mode_enabled_set(false);
 
     return dlmstp_init((char *)&mstp_port);
@@ -162,6 +169,7 @@ static void bacnet_receive_task(void *pvParameters)
                 src = orig_src;
             }
             if (apdu_offset > 0 && apdu_offset < (int)pdu_len) {
+                bacnet_log_whois_iam(&rx_buffer[apdu_offset], pdu_len - apdu_offset, "bip");
                 bacnet_datalink_lock(datalink_bip);
                 apdu_handler(&src, &rx_buffer[apdu_offset], pdu_len - apdu_offset);
                 bacnet_datalink_unlock();
@@ -185,14 +193,33 @@ static void bacnet_mstp_receive_task(void *pvParameters)
         memset(&src, 0, sizeof(src));
         pdu_len = dlmstp_receive(&src, rx_buffer, sizeof(rx_buffer), 0);
         if (pdu_len > 0) {
+            mstp_pdu_count++;
             BACNET_ADDRESS dest = {0};
             BACNET_NPDU_DATA npdu_data = {0};
             int apdu_offset = bacnet_npdu_decode(
                 rx_buffer, pdu_len, &dest, &src, &npdu_data);
             if (apdu_offset > 0 && apdu_offset < (int)pdu_len) {
+                mstp_apdu_count++;
+                if ((apdu_offset + 4) <= (int)pdu_len) {
+                    uint8_t pdu_type = rx_buffer[apdu_offset] & 0xF0;
+                    uint8_t service_choice = rx_buffer[apdu_offset + 3];
+                    if (pdu_type == PDU_TYPE_CONFIRMED_SERVICE_REQUEST &&
+                        service_choice == SERVICE_CONFIRMED_READ_PROPERTY) {
+                        mstp_rp_total++;
+                        mstp_rp_last_value = Analog_Value_Present_Value(1);
+                    } else if (pdu_type == PDU_TYPE_CONFIRMED_SERVICE_REQUEST &&
+                        service_choice == SERVICE_CONFIRMED_WRITE_PROPERTY) {
+                        mstp_wp_total++;
+                    }
+                }
+                bacnet_log_whois_iam(&rx_buffer[apdu_offset], pdu_len - apdu_offset, "mstp");
                 bacnet_datalink_lock(datalink_mstp);
                 apdu_handler(&src, &rx_buffer[apdu_offset], pdu_len - apdu_offset);
                 bacnet_datalink_unlock();
+            } else {
+                ESP_LOGW(TAG, "MS/TP RX frame decode failed: len=%u apdu_offset=%d src.len=%u src.mac=%u",
+                    (unsigned)pdu_len, apdu_offset, (unsigned)src.len,
+                    (unsigned)(src.len ? src.mac[0] : 0));
             }
         }
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -210,7 +237,8 @@ void app_main(void)
     }
     
     /* If OVERRIDE_NVS_ON_FLASH is set, always erase NVS to reset to code defaults */
-    if (OVERRIDE_NVS_ON_FLASH) {
+    override_nvs_on_flash = USER_OVERRIDE_NVS_ON_FLASH;
+    if (override_nvs_on_flash) {
         ESP_LOGI(TAG, "Override flag set - erasing NVS to reset to defaults");
         nvs_flash_erase();
         ret = nvs_flash_init();
@@ -227,39 +255,52 @@ void app_main(void)
         ESP_LOGI(TAG, "NVS initialized from existing data");
     }
 
-    /* Initialize network stack (must be done before WiFi init) */
-    esp_netif_init();
-    esp_event_loop_create_default();
+    if (USER_ENABLE_BACNET_IP) {
+        /* Initialize network stack (must be done before WiFi init) */
+        esp_netif_init();
+        esp_event_loop_create_default();
 
-    wifi_init_sta();
+        wifi_init_sta();
 
-    ESP_LOGI(TAG, "Initializing BACnet stack (B/IP)");
-    datalink_set(datalink_bip);
-    if (!datalink_init(NULL)) {
-        ESP_LOGE(TAG, "Failed to initialize BACnet datalink");
-        return;
+        ESP_LOGI(TAG, "Initializing BACnet stack (B/IP)");
+        datalink_set(datalink_bip);
+        if (!datalink_init(NULL)) {
+            ESP_LOGE(TAG, "Failed to initialize BACnet datalink");
+            return;
+        }
+
+        bacnet_register_with_bbmd();
     }
 
-    bacnet_register_with_bbmd();
-
-    ESP_LOGI(TAG, "Initializing BACnet MS/TP");
-    if (!bacnet_mstp_init()) {
-        ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink");
-    } else {
-        datalink_set(datalink_mstp);
-        if (!datalink_init((char *)&mstp_port)) {
-            ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink interface");
+    if (USER_ENABLE_BACNET_MSTP) {
+        ESP_LOGI(TAG, "Initializing BACnet MS/TP");
+        if (!bacnet_mstp_init()) {
+            ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink");
+        } else {
+            datalink_set(datalink_mstp);
+            if (!datalink_init((char *)&mstp_port)) {
+                ESP_LOGE(TAG, "Failed to initialize BACnet MS/TP datalink interface");
+            }
         }
     }
-    datalink_set(datalink_bip);
+
+    if (USER_ENABLE_BACNET_IP) {
+        datalink_default = datalink_bip;
+    } else if (USER_ENABLE_BACNET_MSTP) {
+        datalink_default = datalink_mstp;
+    }
+    if (datalink_default) {
+        datalink_set(datalink_default);
+    }
 
     Device_Init(NULL);
-    Device_Set_Object_Instance_Number(BACNET_DEVICE_INSTANCE);
+    Device_Set_Object_Instance_Number(USER_BACNET_DEVICE_INSTANCE);
     Device_Set_Vendor_Identifier(260);
     Device_Object_Name_ANSI_Init("ESP32-BACnet");
 
     /* Register service handlers - using bacnet-stack library handlers */
     ESP_LOGI(TAG, "Registering BACnet service handlers");
+    apdu_set_unconfirmed_handler(SERVICE_UNCONFIRMED_I_AM, handler_i_am_add);
     apdu_set_unconfirmed_handler(SERVICE_UNCONFIRMED_WHO_IS, handler_who_is);
     apdu_set_unrecognized_service_handler_handler(handler_unrecognized_service);
     /* Read Property - REQUIRED for BACnet devices */
@@ -280,23 +321,31 @@ void app_main(void)
     bacnet_create_binary_outputs_with_gpio_sync();  /* Create BO with GPIO sync task */
 
     ESP_LOGI(TAG, "Broadcasting I-Am");
-    bacnet_datalink_lock(datalink_bip);
-    Send_I_Am(Handler_Transmit_Buffer);
-    bacnet_datalink_unlock();
-    bacnet_datalink_lock(datalink_mstp);
-    Send_I_Am(Handler_Transmit_Buffer);
-    bacnet_datalink_unlock();
+    if (USER_ENABLE_BACNET_IP) {
+        bacnet_datalink_lock(datalink_bip);
+        Send_I_Am(Handler_Transmit_Buffer);
+        bacnet_datalink_unlock();
+    }
+    if (USER_ENABLE_BACNET_MSTP) {
+        bacnet_datalink_lock(datalink_mstp);
+        Send_I_Am(Handler_Transmit_Buffer);
+        bacnet_datalink_unlock();
+    }
 
     /* Initialize display */
     ESP_LOGI(TAG, "Initializing display");
     display_init();
 
     /* Start BACnet receive task to handle incoming messages */
-    if (xTaskCreate(bacnet_receive_task, "bacnet_rx", 16384, NULL, 5, NULL) != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create bacnet_rx task");
+    if (USER_ENABLE_BACNET_IP) {
+        if (xTaskCreate(bacnet_receive_task, "bacnet_rx", 16384, NULL, 5, NULL) != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create bacnet_rx task");
+        }
     }
-    if (xTaskCreate(bacnet_mstp_receive_task, "bacnet_mstp_rx", 8192, NULL, 5, NULL) != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create bacnet_mstp_rx task");
+    if (USER_ENABLE_BACNET_MSTP) {
+        if (xTaskCreate(bacnet_mstp_receive_task, "bacnet_mstp_rx", 12288, NULL, 5, NULL) != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create bacnet_mstp_rx task");
+        }
     }
     if (xTaskCreate(bacnet_cov_task, "bacnet_cov", 24576, NULL, 4, &bacnet_cov_task_handle) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create bacnet_cov task");
@@ -305,14 +354,35 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to create pms5003 task");
     }
 
-    ESP_LOGI(TAG, "BACnet stack initialized - idle");
+    if (USER_ENABLE_BACNET_MSTP) {
+        ESP_LOGI(TAG, "BACnet MS/TP ready");
+    }
 
     /* Keep the task alive - maintenance + display updates */
     uint32_t display_tick = 0;
+    uint32_t iam_tick = 0;
+    uint32_t mstp_rx_tick = 0;
     while (1) {
-        bacnet_datalink_lock(datalink_bip);
-        datalink_maintenance_timer(1);
-        bacnet_datalink_unlock();
+        if (USER_ENABLE_BACNET_IP) {
+            bacnet_datalink_lock(datalink_bip);
+            datalink_maintenance_timer(1);
+            bacnet_datalink_unlock();
+        }
+
+        if (USER_ENABLE_BACNET_MSTP && ++iam_tick % 60 == 0) {
+            bacnet_datalink_lock(datalink_mstp);
+            Send_I_Am(Handler_Transmit_Buffer);
+            bacnet_datalink_unlock();
+        }
+
+        if (USER_ENABLE_BACNET_MSTP && ++mstp_rx_tick % 30 == 0) {
+            MSTP_RS485_Rx_Bytes_Get_Reset();
+            MSTP_RS485_Preamble_Counts_Get_Reset(NULL, NULL);
+            mstp_pdu_count = 0;
+            mstp_apdu_count = 0;
+            mstp_rp_total = 0;
+            mstp_wp_total = 0;
+        }
         
         /* Update display every 2 seconds */
         if (++display_tick % 2 == 0) {
@@ -341,10 +411,7 @@ static void bacnet_cov_task(void *pvParameters)
         handler_cov_timer_seconds(1);
         handler_cov_task();
         bacnet_datalink_unlock();
-        if (++tick % 60 == 0) {
-            UBaseType_t watermark = uxTaskGetStackHighWaterMark(NULL);
-            ESP_LOGI(TAG, "bacnet_cov stack watermark: %u", (unsigned)watermark);
-        }
+        tick++;
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -366,7 +433,7 @@ static void __attribute__((unused)) pms5003_task(void *pvParameters)
     pms5003_data_t sensor_data;
     uint32_t read_count = 0;
 
-    ESP_LOGI(TAG, "PMS5003 task started");
+    // ESP_LOGI(TAG, "PMS5003 task started");
     pms5003_init();
 
     /* PMS5003 requires ~30 seconds for full initialization:
@@ -375,15 +442,15 @@ static void __attribute__((unused)) pms5003_task(void *pvParameters)
      * - UART frame synchronization
      * This prevents read failures during early startup
      */
-    ESP_LOGI(TAG, "Waiting 15 seconds for PMS5003 sensor initialization...");
+    // ESP_LOGI(TAG, "Waiting 15 seconds for PMS5003 sensor initialization...");
     vTaskDelay(pdMS_TO_TICKS(15000));
-    ESP_LOGI(TAG, "PMS5003 sensor initialization complete, starting reads");
+    // ESP_LOGI(TAG, "PMS5003 sensor initialization complete, starting reads");
 
     while (1) {
         if (pms5003_read(&sensor_data)) {
             read_count++;
-            ESP_LOGI(TAG, "PMS5003 read success (count: %lu)", read_count);
-            pms5003_print_data(&sensor_data);
+            // ESP_LOGI(TAG, "PMS5003 read success (count: %lu)", read_count);
+            // pms5003_print_data(&sensor_data);
             
             /* Write only PM2.5 atmospheric value to BACnet AV1 */
             Analog_Value_Present_Value_Set(1, (float)sensor_data.pm2_5_atm, 16);
@@ -395,7 +462,7 @@ static void __attribute__((unused)) pms5003_task(void *pvParameters)
              * Analog_Value_Present_Value_Set(5, (float)sensor_data.particles_2_5, 16);
              */
         } else {
-            ESP_LOGW(TAG, "PMS5003 read failed - sensor disconnected or no data");
+            // ESP_LOGW(TAG, "PMS5003 read failed - sensor disconnected or no data");
             /* Clear BACnet values to indicate no valid data */
             Analog_Value_Present_Value_Set(1, -1.0f, 16);  // -1 indicates error/no sensor
             // Analog_Value_Present_Value_Set(2, -1.0f, 16);
@@ -409,9 +476,9 @@ static void __attribute__((unused)) pms5003_task(void *pvParameters)
 
 static void bacnet_register_with_bbmd(void)
 {
-    BACNET_IP_ADDRESS bbmd_addr = { { BBMD_IP_OCTET_1, BBMD_IP_OCTET_2,
-                                     BBMD_IP_OCTET_3, BBMD_IP_OCTET_4 },
-                                    BBMD_PORT };
-    int result = bvlc_register_with_bbmd(&bbmd_addr, BBMD_TTL_SECONDS);
+    BACNET_IP_ADDRESS bbmd_addr = { { USER_BBMD_IP_OCTET_1, USER_BBMD_IP_OCTET_2,
+                                     USER_BBMD_IP_OCTET_3, USER_BBMD_IP_OCTET_4 },
+                                    USER_BBMD_PORT };
+    int result = bvlc_register_with_bbmd(&bbmd_addr, USER_BBMD_TTL_SECONDS);
     ESP_LOGI(TAG, "BBMD register result: %d", result);
 }
