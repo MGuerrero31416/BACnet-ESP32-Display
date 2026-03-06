@@ -22,8 +22,8 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 - **Arduino Framework**: Leverages Arduino ecosystem for easy hardware control
 - **Change of Value (COV)**: Implements BACnet COV notifications for efficient real-time updates
 - **Persistent Storage**: Attribute values modifiable from BACnet supervisor are automatically saved to ESP32 non-volatile memory (NVS) for retention across power cycles
-- **NVS Override**: When `OVERRIDE_NVS_ON_FLASH=1`, NVS is erased on boot and all values reset to defaults
-- **Centralized Configuration**: User settings are centralized in `User_Settings.c`
+- **NVS Override**: When `USER_OVERRIDE_NVS_ON_FLASH=1`, NVS is erased on boot and all values reset to defaults
+- **Centralized Configuration**: User settings are centralized in [main/User_Settings.c](main/User_Settings.c)
 - **Air Quality Monitoring**: PMS5003 PM2.5/PM1.0/PM10 sensor with automatic BACnet integration
 
 ## Photos
@@ -91,20 +91,21 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 
 ## GPIO Summary
 
-| Pin     | Component   | Signal              |
-|---------|-------------|---------------------|
-| GPIO 2  | TFT Display | DC (Data/Command)   |
-| GPIO 4  | TFT Display | RST (Reset)         |
-| GPIO 15 | TFT Display | CS (Chip Select)    |
-| GPIO 16 | MAX485      | RO (RX)             |
-| GPIO 17 | MAX485      | DI (TX)             |
-| GPIO 5  | MAX485      | DE/RE               |
-| GPIO 25 | PMS5003     | RX (sensor TX)      |
-| GPIO 26 | PMS5003     | TX (sensor RX)      |
-| GPIO 27 | PMS5003     | SET (Sleep Control) |
-| GPIO 18 | TFT Display | SCLK (SPI Clock)    |
-| GPIO 23 | TFT Display | MOSI (SPI Data)     |
-| GPIO 32 | TFT Display | BACKLIGHT           |
+| Pin     | Component   | Signal              | Definition |
+|---------|-------------|---------------------|------------|
+| GPIO 2  | TFT Display | DC (Data/Command)   | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 4  | TFT Display | RST (Reset)         | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 15 | TFT Display | CS (Chip Select)    | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 18 | TFT Display | SCLK (SPI Clock)    | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 23 | TFT Display | MOSI (SPI Data)     | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 32 | TFT Display | BACKLIGHT           | [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h)
+| GPIO 16 | MAX485      | RO (RX)             | [main/mstp_rs485.c](main/mstp_rs485.c)
+| GPIO 17 | MAX485      | DI (TX)             | [main/mstp_rs485.c](main/mstp_rs485.c)
+| GPIO 5  | MAX485      | DE/RE               | [main/mstp_rs485.c](main/mstp_rs485.c)
+| GPIO 25 | PMS5003     | RX (sensor TX)      | [components/pms5003/pms5003.h](components/pms5003/pms5003.h)
+| GPIO 26 | PMS5003     | TX (sensor RX)      | [components/pms5003/pms5003.h](components/pms5003/pms5003.h)
+| GPIO 27 | PMS5003     | SET (Sleep Control) | [components/pms5003/pms5003.h](components/pms5003/pms5003.h)
+
 
 ## Build Requirements
 
@@ -115,7 +116,7 @@ You can easily add extra BACnet objects and map them to ESP32 GPIO for analog an
 ## Building
 
 ```bash
-cd c:\esp\BACnet-ESP32-Display
+cd c:\git\BACnet-ESP32-Display
 idf.py build
 ```
 
@@ -140,11 +141,11 @@ idf.py monitor -p COM3
 The ST7789 display has a framebuffer offset that's compensated in [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h):
 
 ```c
-#define TFT_COLSTART 17   // Horizontal offset
-#define TFT_ROWSTART 40   // Vertical offset
+#define TFT_OFFSET_X 0   // Horizontal offset
+#define TFT_OFFSET_Y 0   // Vertical offset
 ```
 
-These values are specific to cheap Chinese clones and may need adjustment for your hardware.
+Legacy `TFT_COLSTART`/`TFT_ROWSTART` examples are also present in comments in the same file; use one offset method consistently.
 
 ### FreeRTOS Configuration
 
@@ -215,9 +216,12 @@ The device broadcasts its Device ID and manages BACnet objects that can be read/
 
 ### BACnet Objects Exposed
 
-- **Device**: 31416 (configurable in main.c)
+- **Device**: 31416 (configurable in [main/User_Settings.c](main/User_Settings.c))
 - **Analog Values**: Instance 1, 2, 3, 4
 - **Binary Values**: Instance 1, 2, 3, 4
+- **Analog Inputs**: Instance 1, 2, 3, 4
+- **Binary Inputs**: Instance 1, 2, 3, 4
+- **Binary Outputs**: Instance 1, 2, 3, 4
 
 ## Modifications to bacnet-stack
 
@@ -249,13 +253,13 @@ Position all elements relative to these constants to avoid hardcoding coordinate
 ## Troubleshooting
 
 ### Display offset issues
-If text appears misaligned, adjust `TFT_COLSTART` and `TFT_ROWSTART` in User_Setup.h and recompile.
+If text appears misaligned, adjust `TFT_OFFSET_X` and `TFT_OFFSET_Y` in [components/TFT_eSPI/User_Setup.h](components/TFT_eSPI/User_Setup.h) and recompile.
 
 ### WiFi connection fails
-Check SSID/password in wifi_helper.c and ensure your router is compatible with ESP32's WiFi drivers.
+Check SSID/password in [main/User_Settings.c](main/User_Settings.c), then verify WiFi init/connection flow in [main/wifi_helper.c](main/wifi_helper.c).
 
 ### Linker errors with Arduino
-Ensure `CONFIG_FREERTOS_HZ=1000` is set in sdkconfig and rebuild with `idf.py fullclean && idf.py build`.
+Ensure `CONFIG_FREERTOS_HZ=1000` is set in [sdkconfig](sdkconfig) and rebuild with `idf.py fullclean && idf.py build`.
 
 
 ## References

@@ -5,21 +5,70 @@
 #include "esp_netif.h"
 #include "User_Settings.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/ip4_addr.h"
 
-static const char *TAG = "wifi";
+static const char *TAG = "wifi_helper";
+static EventGroupHandle_t s_wifi_event_group;
+static bool s_ip_logged;
+
+#define WIFI_CONNECTED_BIT BIT0
+
+static void wifi_event_handler(void *arg,
+                               esp_event_base_t event_base,
+                               int32_t event_id,
+                               void *event_data)
+{
+    (void)arg;
+
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        s_ip_logged = false;
+        esp_wifi_connect();
+        ESP_LOGW(TAG, "WiFi disconnected, retrying connection");
+        return;
+    }
+
+    if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        if (event && !s_ip_logged) {
+            ESP_LOGI(TAG, "WiFi connected with IP: " IPSTR, IP2STR(&event->ip_info.ip));
+            ESP_LOGI(TAG, "WiFi connected to SSID: %s", USER_WIFI_SSID);
+            s_ip_logged = true;
+        }
+        if (s_wifi_event_group) {
+            xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        }
+    }
+}
 
 /* Simple Wi-Fi setup (blocking until connected) */
 void wifi_init_sta(void)
 {
     /* Initialize networking stack (only call once in app_main context) */
     /* esp_netif_init() and esp_event_loop_create_default() should be called before this */
+    s_wifi_event_group = xEventGroupCreate();
+    s_ip_logged = false;
+
     esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+    esp_event_handler_instance_t wifi_event_instance;
+    esp_event_handler_instance_t ip_event_instance;
+    esp_event_handler_instance_register(WIFI_EVENT,
+                                        ESP_EVENT_ANY_ID,
+                                        &wifi_event_handler,
+                                        NULL,
+                                        &wifi_event_instance);
+    esp_event_handler_instance_register(IP_EVENT,
+                                        IP_EVENT_STA_GOT_IP,
+                                        &wifi_event_handler,
+                                        NULL,
+                                        &ip_event_instance);
+    ESP_LOGI(TAG, "WiFi event hooks registered (WIFI_EVENT, IP_EVENT_STA_GOT_IP)");
 
     esp_netif_t *esp_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (USER_WIFI_USE_STATIC_IP && esp_netif) {
@@ -50,22 +99,16 @@ void wifi_init_sta(void)
     ESP_LOGI(TAG, "Connecting to Wi-Fi %s ...", USER_WIFI_SSID);
     esp_wifi_connect();
 
-    /* Wait until IP is assigned - poll with longer timeout */
-    int retry = 0;
-    esp_netif_ip_info_t ip_info = {0};
-    /* Reuse handle for IP status */
-    esp_netif = esp_netif ? esp_netif : esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-
-    while (retry < 50) {  /* Wait up to 10 seconds (50 * 200ms) */
-        if (esp_netif && esp_netif_get_ip_info(esp_netif, &ip_info) == ESP_OK &&
-            ip_info.ip.addr != 0) {
-            ESP_LOGI(TAG, "WiFi connected with IP: " IPSTR, IP2STR(&ip_info.ip));
-            ESP_LOGI(TAG, "WiFi connected to SSID: %s", USER_WIFI_SSID);
-            return;
-        }
-        vTaskDelay(pdMS_TO_TICKS(200));
-        retry++;
+    EventBits_t bits = 0;
+    if (s_wifi_event_group) {
+        bits = xEventGroupWaitBits(s_wifi_event_group,
+                                   WIFI_CONNECTED_BIT,
+                                   pdFALSE,
+                                   pdFALSE,
+                                   pdMS_TO_TICKS(10000));
     }
 
-    ESP_LOGW(TAG, "WiFi connection timeout - proceeding anyway");
+    if ((bits & WIFI_CONNECTED_BIT) == 0) {
+        ESP_LOGW(TAG, "WiFi connection timeout - proceeding anyway");
+    }
 }
